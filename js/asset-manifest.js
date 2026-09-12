@@ -23,9 +23,30 @@ window.ASSET_MANIFEST = {
     "stair": "assets/props/stair.webp"
   },
   "heroes": {
-    "ember": "assets/heroes/ember.webp"
+    "ash": "assets/heroes/ash.webp",
+    "ember": "assets/heroes/ember.webp",
+    "frost": "assets/heroes/frost.webp"
   },
-  "cards": {},
+  "cards": {
+    "card_atk_fire_1": "assets/cards/card_atk_fire_1.webp",
+    "card_atk_fire_2": "assets/cards/card_atk_fire_2.webp",
+    "card_atk_fire_3": "assets/cards/card_atk_fire_3.webp",
+    "card_atk_ice_1": "assets/cards/card_atk_ice_1.webp",
+    "card_atk_ice_2": "assets/cards/card_atk_ice_2.webp",
+    "card_atk_ice_3": "assets/cards/card_atk_ice_3.webp",
+    "card_atk_neu_1": "assets/cards/card_atk_neu_1.webp",
+    "card_atk_neu_2": "assets/cards/card_atk_neu_2.webp",
+    "card_atk_neu_3": "assets/cards/card_atk_neu_3.webp",
+    "card_skl_fire_1": "assets/cards/card_skl_fire_1.webp",
+    "card_skl_fire_2": "assets/cards/card_skl_fire_2.webp",
+    "card_skl_fire_3": "assets/cards/card_skl_fire_3.webp",
+    "card_skl_ice_1": "assets/cards/card_skl_ice_1.webp",
+    "card_skl_ice_2": "assets/cards/card_skl_ice_2.webp",
+    "card_skl_ice_3": "assets/cards/card_skl_ice_3.webp",
+    "card_skl_neu_1": "assets/cards/card_skl_neu_1.webp",
+    "card_skl_neu_2": "assets/cards/card_skl_neu_2.webp",
+    "card_skl_neu_3": "assets/cards/card_skl_neu_3.webp"
+  },
   "npc": {
     "shopkeeper": "assets/npc/shopkeeper.webp"
   },

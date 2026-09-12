@@ -10,6 +10,21 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
 const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
+// 저사양 자동 완화: 프레임이 계속 느리면(30fps 미만이 ~0.7초 이상 이어지면)
+// body에 perf-lite를 붙여 무거운 연출(입자, 광원, 사진 호흡 애니메이션 등)을 끈다.
+// 한동안 다시 매끄러워지면(~3초) 자동으로 되돌린다.
+(function watchFrameRate(){
+  let last = performance.now(), slow = 0, fast = 0, on = false;
+  function tick(t){
+    const dt = t - last; last = t;
+    if(dt > 33){ slow++; fast = 0; } else { fast++; }
+    if(!on && slow > 20){ on = true; document.body.classList.add('perf-lite'); }
+    else if(on && fast > 180){ on = false; slow = 0; document.body.classList.remove('perf-lite'); }
+    requestAnimationFrame(tick);
+  }
+  requestAnimationFrame(tick);
+})();
+
 // mulberry32 — 시드 고정으로 모든 테스터가 동일한 런을 플레이
 function makeRng(seed){
   let a = seed >>> 0;
@@ -928,6 +943,19 @@ const CHARS = {
     boon:{ n:'갈라진 저울', d:'매 전투 첫 턴에 카드를 1장 더 뽑습니다.' } },
 };
 
+// 전투 중 영웅 아트 — assets/heroes/에 사진이 있으면 그걸 쓰고(적 아트와 같은 방식),
+// 없으면 기존 SVG 실루엣으로 대체된다. #hero-art의 is-photo 클래스도 같이 맞춰준다.
+function heroArtHTML(starterId){
+  const portrait = PORTRAITS[starterId];
+  const host = $('#hero-art');
+  if(host) host.classList.toggle('is-photo', !!portrait);
+  if(portrait){
+    const name = (CHARS[starterId] || CHARS.ash).name;
+    return `<div class="photo-wrap"><img class="hero-photo" src="${portrait}" alt="${esc(name)}"></div>`;
+  }
+  return HEROES[starterId] || HEROES.ash;
+}
+
 const HERO_SVG_OLD = `<svg viewBox="0 0 140 190" aria-hidden="true">
 <defs>
   <linearGradient id="cloak" x1="0" y1="0" x2="0" y2="1">
@@ -1357,6 +1385,10 @@ const SFX = (() => {
       tone(196,t,.3,'sine',.16); tone(294,t+.05,.28,'sine',.1); },
     reward(){ if(!ready())return; const t=ctx.currentTime;
       [523,659,784,1047].forEach((f,i)=>tone(f,t+i*.075,.42,'triangle',.14)); },
+    fuse(){ if(!ready())return; const t=ctx.currentTime;
+      noise(t,.24,3200,1.4,.14,'bandpass');
+      [440,660,880].forEach((f,i)=>tone(f,t+i*.055,.3,'triangle',.14,f*1.35));
+      tone(1320,t+.2,.42,'sine',.17,2100); },
     win(){ if(!ready())return; const t=ctx.currentTime;
       [392,523,659,784,1047].forEach((f,i)=>tone(f,t+i*.13,.9,'triangle',.17)); },
     lose(){ if(!ready())return; const t=ctx.currentTime;
@@ -1427,86 +1459,126 @@ const KB = t => `<span class="kb">${t}</span>`;
 
 const CARDS = {
   strike:{ n:'강타', c:1, t:'attack', el:null, art:'sword', basic:true,
-    d:()=>`피해 ${B(pAtk(6))}`,
-    use:async()=>{ await attack(6); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(6,tier)))}`,
+    use:async(tier=1)=>{ await attack(V(6,tier)); } },
 
   defend:{ n:'수비', c:1, t:'skill', el:null, art:'shield', basic:true,
-    d:()=>`${KB('방어도')} ${B(6)}`,
-    use:async()=>{ await gainBlock(6); } },
+    d:(tier=1)=>`${KB('방어도')} ${B(V(6,tier))}`,
+    use:async(tier=1)=>{ await gainBlock(V(6,tier)); } },
 
   ember_toss:{ n:'불씨 던지기', c:1, t:'attack', el:'fire', art:'flame',
-    d:()=>`피해 ${B(pAtk(4))}. ${KF('점화')} ${B(2)}`,
-    use:async()=>{ await attack(4); await applyE('ignite',2); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(4,tier)))}. ${KF('점화')} ${B(V(2,tier))}`,
+    use:async(tier=1)=>{ await attack(V(4,tier)); await applyE('ignite',V(2,tier)); } },
 
   frost_shard:{ n:'서리 파편', c:1, t:'attack', el:'ice', art:'snow',
-    d:()=>`피해 ${B(pAtk(3))}. ${KI('서리')} ${B(2)}`,
-    use:async()=>{ await attack(3); await applyE('frost',2); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(3,tier)))}. ${KI('서리')} ${B(V(2,tier))}`,
+    use:async(tier=1)=>{ await attack(V(3,tier)); await applyE('frost',V(2,tier)); } },
 
   mark:{ n:'표식', c:1, t:'skill', el:null, art:'eye',
-    d:()=>`${KV('취약')} ${B(2)}`,
-    use:async()=>{ await applyE('vuln',2); } },
+    d:(tier=1)=>`${KV('취약')} ${B(V(2,tier))}`,
+    use:async(tier=1)=>{ await applyE('vuln',V(2,tier)); } },
 
   regroup:{ n:'재정비', c:1, t:'skill', el:null, art:'cards',
-    d:()=>`카드 ${B(2)}장 뽑기`,
-    use:async()=>{ draw(2); } },
+    d:(tier=1)=>`카드 ${B(V(2,tier))}장 뽑기`,
+    use:async(tier=1)=>{ draw(V(2,tier)); } },
 
   sigil:{ n:'화염 각인', c:1, t:'skill', el:'fire', art:'flame',
-    d:()=>`${KF('점화')} ${B(3)}`,
-    use:async()=>{ await applyE('ignite',3); } },
+    d:(tier=1)=>`${KF('점화')} ${B(V(3,tier))}`,
+    use:async(tier=1)=>{ await applyE('ignite',V(3,tier)); } },
 
   frost_ward:{ n:'서리 방벽', c:1, t:'skill', el:'ice', art:'shield',
-    d:()=>`${KB('방어도')} ${B(6)}. ${KI('서리')} ${B(2)}`,
-    use:async()=>{ await gainBlock(6); await applyE('frost',2); } },
+    d:(tier=1)=>`${KB('방어도')} ${B(V(6,tier))}. ${KI('서리')} ${B(V(2,tier))}`,
+    use:async(tier=1)=>{ await gainBlock(V(6,tier)); await applyE('frost',V(2,tier)); } },
 
   flurry:{ n:'연타', c:1, t:'attack', el:null, art:'sword',
-    d:()=>`피해 ${B(pAtk(3))}을 ${B(2)}회`,
-    use:async()=>{ await attack(3); if(C.e.hp>0){ await wait(130); await attack(3);} } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(3,tier)))}을 ${B(V(2,tier))}회`,
+    use:async(tier=1)=>{
+      const hits = V(2,tier);
+      for(let k = 0; k < hits; k++){
+        if(k > 0){ if(C.e.hp <= 0) break; await wait(130); }
+        await attack(V(3,tier));
+      }
+    } },
 
   sleet:{ n:'진눈깨비', c:1, t:'attack', el:'ice', art:'snow',
-    d:()=>`피해 ${B(pAtk(4))}. ${KW('약화')} ${B(2)}`,
-    use:async()=>{ await attack(4); await applyE('weak',2); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(4,tier)))}. ${KW('약화')} ${B(V(2,tier))}`,
+    use:async(tier=1)=>{ await attack(V(4,tier)); await applyE('weak',V(2,tier)); } },
 
   kindle:{ n:'불티', c:0, t:'skill', el:'fire', art:'bolt',
-    d:()=>`${KF('점화')} ${B(1)}. 카드 ${B(1)}장 뽑기`,
-    use:async()=>{ await applyE('ignite',1); draw(1); } },
+    d:(tier=1)=>`${KF('점화')} ${B(V(1,tier))}. 카드 ${B(V(1,tier))}장 뽑기`,
+    use:async(tier=1)=>{ await applyE('ignite',V(1,tier)); draw(V(1,tier)); } },
 
   glacier:{ n:'빙하', c:2, t:'attack', el:'ice', art:'snow',
-    d:()=>`피해 ${B(pAtk(10))}. ${KI('서리')} ${B(2)}`,
-    use:async()=>{ await attack(10); await applyE('frost',2); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(10,tier)))}. ${KI('서리')} ${B(V(2,tier))}`,
+    use:async(tier=1)=>{ await attack(V(10,tier)); await applyE('frost',V(2,tier)); } },
 
   detonate:{ n:'기폭', c:2, t:'attack', el:'fire', art:'burst',
-    d:()=>{ const st = C ? C.e.ignite : 0; return `${KF('점화')} 1당 피해 ${B(5)}. 점화를 모두 소모${C? ` <span style="color:#FF9165">(현재 ${st*5})</span>`:''}`; },
-    use:async()=>{ const st = C.e.ignite; C.e.ignite = 0; renderEnemyStatus();
-      if(st>0){ await attack(st*5, true); } else { toast('점화가 없어 아무 일도 없었다'); } } },
+    d:(tier=1)=>{ const st = C ? C.e.ignite : 0; const per = V(5,tier);
+      return `${KF('점화')} 1당 피해 ${B(per)}. 점화를 모두 소모${C? ` <span style="color:#FF9165">(현재 ${st*per})</span>`:''}`; },
+    use:async(tier=1)=>{ const st = C.e.ignite; const per = V(5,tier); C.e.ignite = 0; renderEnemyStatus();
+      if(st>0){ await attack(st*per, true); } else { toast('점화가 없어 아무 일도 없었다'); } } },
 
   coldsnap:{ n:'한파', c:2, t:'skill', el:'ice', art:'snow',
-    d:()=>`${KI('서리')} ${B(5)}`,
-    use:async()=>{ await applyE('frost',5); } },
+    d:(tier=1)=>`${KI('서리')} ${B(V(5,tier))}`,
+    use:async(tier=1)=>{ await applyE('frost',V(5,tier)); } },
 
   forge:{ n:'대장간', c:2, t:'skill', el:'fire', art:'hammer',
-    d:()=>`${KS('힘')} ${B(2)} 획득`,
-    use:async()=>{ C.p.str += 2; renderPlayerStatus(); float('힘 +2','blk', heroRect()); } },
+    d:(tier=1)=>`${KS('힘')} ${B(V(2,tier))} 획득`,
+    use:async(tier=1)=>{ const amt = V(2,tier); C.p.str += amt; renderPlayerStatus(); float(`힘 +${amt}`,'blk', heroRect()); } },
 
   firewall:{ n:'방화벽', c:2, t:'skill', el:'fire', art:'wall',
-    d:()=>`${KB('방어도')} ${B(12)}. ${KF('점화')} ${B(3)}`,
-    use:async()=>{ await gainBlock(12); await applyE('ignite',3); } },
+    d:(tier=1)=>`${KB('방어도')} ${B(V(12,tier))}. ${KF('점화')} ${B(V(3,tier))}`,
+    use:async(tier=1)=>{ await gainBlock(V(12,tier)); await applyE('ignite',V(3,tier)); } },
 
   heavy:{ n:'묵직한 일격', c:2, t:'attack', el:null, art:'hammer',
-    d:()=>`피해 ${B(pAtk(15))}`,
-    use:async()=>{ await attack(15); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(15,tier)))}`,
+    use:async(tier=1)=>{ await attack(V(15,tier)); } },
 
   ashstorm:{ n:'잿불 폭풍', c:3, t:'attack', el:'fire', art:'flame',
-    d:()=>`피해 ${B(pAtk(16))}. ${KF('점화')} ${B(4)}`,
-    use:async()=>{ await attack(16); await applyE('ignite',4); } },
+    d:(tier=1)=>`피해 ${B(pAtk(V(16,tier)))}. ${KF('점화')} ${B(V(4,tier))}`,
+    use:async(tier=1)=>{ await attack(V(16,tier)); await applyE('ignite',V(4,tier)); } },
 
   abszero:{ n:'절대영도', c:3, t:'skill', el:'ice', art:'snow',
-    d:()=>`${KB('방어도')} ${B(16)}. ${KI('서리')} ${B(4)}`,
-    use:async()=>{ await gainBlock(16); await applyE('frost',4); } },
+    d:(tier=1)=>`${KB('방어도')} ${B(V(16,tier))}. ${KI('서리')} ${B(V(4,tier))}`,
+    use:async(tier=1)=>{ await gainBlock(V(16,tier)); await applyE('frost',V(4,tier)); } },
 
   rekindle:{ n:'재점화', c:1, t:'skill', el:null, art:'heart',
-    d:()=>`체력 ${B(6)} 회복`,
-    use:async()=>{ heal(6); } },
+    d:(tier=1)=>`체력 ${B(V(6,tier))} 회복`,
+    use:async(tier=1)=>{ heal(V(6,tier)); } },
 };
+
+/* ═══════════════════════════════════════════════════════════
+   2b. 카드 합성 (티어)
+   덱 안의 카드는 기본적으로 그냥 CARDS의 키 문자열이다 (티어1).
+   합성으로 만들어진 상위 티어 카드만 "strike@2" 처럼 "@티어" 접미사가 붙는다.
+   ═══════════════════════════════════════════════════════════ */
+const TIER_MAX = 3;
+const TIER_MULT = { 1: 1, 2: 1.4, 3: 1.9 };
+const TIER_LABEL = { 2: 'II', 3: 'III' };
+function parseCid(id){
+  const i = id.indexOf('@');
+  if(i < 0) return { base: id, tier: 1 };
+  return { base: id.slice(0, i), tier: parseInt(id.slice(i + 1), 10) || 1 };
+}
+function makeCid(base, tier){ return tier > 1 ? `${base}@${tier}` : base; }
+function cardDef(id){ return CARDS[parseCid(id).base]; }
+function cardLabel(id){
+  const { base, tier } = parseCid(id);
+  return tier > 1 ? `${CARDS[base].n} ${TIER_LABEL[tier]}` : CARDS[base].n;
+}
+// 카드 수치에 티어 배율을 적용 (반올림)
+function V(n, tier){ return Math.round(n * (TIER_MULT[tier] || 1)); }
+// 같은 카드(같은 id 전체, 즉 같은 기본형+같은 티어)가 덱에 2장 이상이고
+// 아직 최고 티어가 아니면 합성 가능
+function fusableSet(deck){
+  const counts = {};
+  deck.forEach(id => { counts[id] = (counts[id] || 0) + 1; });
+  const set = new Set();
+  Object.keys(counts).forEach(id => {
+    if(counts[id] >= 2 && parseCid(id).tier < TIER_MAX) set.add(id);
+  });
+  return set;
+}
 
 const CARD_POOL_FIRE = ['ember_toss','sigil','detonate','forge','firewall','ashstorm','kindle'];
 const CARD_POOL_ICE  = ['frost_shard','frost_ward','sleet','coldsnap','glacier','abszero'];
@@ -1679,23 +1751,55 @@ function costGem(el, cost){
     <path d="${p.d}" fill="none" stroke="rgba(0,0,0,.45)" stroke-width="1" transform="scale(.86) translate(3.2 3.2)"/></svg>`;
 }
 
+// assets/cards/card_{atk|skl}_{fire|ice|neu}_{tier}.webp — 파일이 있으면 카드 전체
+// 배경으로 쓰이고(완성형 아트), 없으면 기존 인라인 SVG 아이콘 + CSS 프레임으로 대체된다.
+// (ASSETS.md 참고)
+function cardArtKey(t, el, tier){
+  const tc = t === 'attack' ? 'atk' : 'skl';
+  const ec = el === 'fire' ? 'fire' : el === 'ice' ? 'ice' : 'neu';
+  return `card_${tc}_${ec}_${tier}`;
+}
 function cardHTML(id, opts){
   opts = opts || {};
-  const c = CARDS[id];
+  const { base, tier } = parseCid(id);
+  const c = CARDS[base];
+  const tag = TYPE_LABEL[c.t];
+  const elTag = c.el === 'fire' ? '불' : c.el === 'ice' ? '서리' : '';
+  const artFile = CARD_ART[cardArtKey(c.t, c.el, tier)];
+  const tierBadge = tier > 1 ? `<div class="card-tier">${TIER_LABEL[tier]}</div>` : '';
   const cls = [
     'card', 't-' + c.t,
     c.el ? 'el-' + c.el : '',
     c.basic ? 'basic' : '',
+    tier > 1 ? 'tiered' : '',
+    artFile ? 'art-card' : '',
     opts.cls || ''
   ].filter(Boolean).join(' ');
-  const tag = TYPE_LABEL[c.t];
-  const elTag = c.el === 'fire' ? '불' : c.el === 'ice' ? '서리' : '';
+
+  if(artFile){
+    // 완성 아트 카드: 이미지가 카드 전체를 채우고, 이름·유형·설명은 이미지 하단의
+    // 어두운 밴드 위에 얹는다. 비용 배지는 기존과 동일하게 좌상단 유지.
+    return `<div class="${cls}" data-card="${id}" ${opts.attrs || ''}>
+      <div class="card-inner">
+        <img class="card-bg" src="${artFile}" alt="" draggable="false">
+        <div class="sheen"></div>
+        <div class="card-plate">
+          <div class="card-plate-name">${esc(c.n)}</div>
+          <div class="card-plate-tag">${tag}${elTag ? ` · ${elTag}` : ''}</div>
+          <div class="card-plate-desc"><span>${c.d(tier)}</span></div>
+        </div>
+        ${tierBadge}
+      </div>
+      <div class="card-cost">${costGem(c.el, c.c)}<b>${c.c}</b></div>
+    </div>`;
+  }
   return `<div class="${cls}" data-card="${id}" ${opts.attrs || ''}>
     <div class="card-inner">
-      <div class="card-art"><svg viewBox="0 0 100 100" fill="none" aria-hidden="true">${CA[id] || ''}</svg></div>
-      <div class="card-body"><span>${c.d()}</span></div>
+      <div class="card-art"><svg viewBox="0 0 100 100" fill="none" aria-hidden="true">${CA[base] || ''}</svg></div>
+      <div class="card-body"><span>${c.d(tier)}</span></div>
       <div class="card-frame"></div>
       <div class="sheen"></div>
+      ${tierBadge}
     </div>
     <div class="card-ribbon">${RB_TAIL}${RIBBON}${RB_TAIL}<span>${esc(c.n)}</span></div>
     <div class="card-tab">${tag}${elTag ? `<i>${elTag}</i>` : ''}</div>
@@ -1801,7 +1905,7 @@ function startCombat(enemyId, nodeName, isElite, isBoss){
       ? `<div class="photo-wrap"><img class="enemy-photo" src="${eImg}" alt="${esc(E.n)}"></div>`
       : ART[E.art]) +
     `<div class="unit-shadow"></div><div class="hitflash" id="eflash"></div>`;
-  $('#hero-art').innerHTML = (HEROES[G.starter] || HEROES.ash) +
+  $('#hero-art').innerHTML = heroArtHTML(G.starter) +
     `<div class="unit-shadow"></div><div id="blockbadge" class="blockbadge" style="display:none"></div>`;
   const hn = $('#hero-unit .unit-name');
   if(hn) hn.textContent = (CHARS[G.starter] || CHARS.ash).name;
@@ -1944,7 +2048,7 @@ function renderHand(){
   const host = $('#hand');
   const n = C.hand.length;
   host.innerHTML = C.hand.map((id, i) => {
-    const c = CARDS[id];
+    const c = cardDef(id);
     const ok = C.energy >= c.c;
     return cardHTML(id, { cls:`inhand ${ok?'playable':'locked'}`, attrs:`data-i="${i}" style="z-index:${10+i}"` });
   }).join('');
@@ -2404,7 +2508,7 @@ const CARD_VFX = {
 
 // 카드 사용 시 연출. 반환 후에 실제 효과가 적용된다.
 async function playCardFX(id){
-  const kind = CARD_VFX[id] || 'orb';
+  const kind = CARD_VFX[parseCid(id).base] || 'orb';
   const hero = heroRect(), foe = enemyRect();
   if(kind === 'slash'){
     lungeHero(); await wait(75); await slashFX(foe); return;
@@ -2581,7 +2685,8 @@ async function playCard(i){
   if(busy || !C || C.over) return;
   const id = C.hand[i];
   if(!id) return;
-  const c = CARDS[id];
+  const { tier } = parseCid(id);
+  const c = cardDef(id);
   if(C.energy < c.c){
     const el = $(`#hand .card[data-i="${i}"]`);
     if(el) nopeCard(el, i);
@@ -2593,7 +2698,7 @@ async function playCard(i){
   if(node){
     node.classList.remove('playable');
     node.style.zIndex = '90';
-    const selfCard = ['defend','frost_ward','forge','regroup','rekindle'].includes(id);
+    const selfCard = SELF_CARDS.includes(parseCid(id).base);
     const tgt = selfCard ? heroRect() : enemyRect();
     const nb = node.getBoundingClientRect(), ab = $('#arena').getBoundingClientRect();
     const dx = tgt.x - (nb.left - ab.left + nb.width/2);
@@ -2614,7 +2719,7 @@ async function playCard(i){
   C.hand.splice(i, 1);
   C.discard.push(id);
   G.stats.cardsPlayed++;
-  log('CARD', `전투${C.fightNo} T${C.turn} ${c.n}`);
+  log('CARD', `전투${C.fightNo} T${C.turn} ${cardLabel(id)}`);
 
   SFX.play('card');
   await wait(215);
@@ -2623,7 +2728,7 @@ async function playCard(i){
 
   try {
     await playCardFX(id);
-    await c.use();
+    await c.use(tier);
   } catch(err){ console.error('card error', id, err); }
 
   busy = false;
@@ -2976,24 +3081,189 @@ function renderShop(){
    17. 덱 보기 / 제거
    ═══════════════════════════════════════════════════════════ */
 let removeMode = false, removeAfter = null, removeCtx = null;
+function renderDeckList(){
+  clearFuseSelection();
+  const fusable = fusableSet(G.deck);
+  const sorted = G.deck.slice().sort((a,b)=>{
+    const A = cardDef(a), Bc = cardDef(b);
+    if(A.c !== Bc.c) return A.c - Bc.c;
+    const byName = A.n.localeCompare(Bc.n, 'ko');
+    if(byName !== 0) return byName;
+    return parseCid(a).tier - parseCid(b).tier;
+  });
+  $('#dv-desc').textContent = removeMode ? '한 장이 영구히 사라집니다.' : `${G.deck.length}장`;
+  $('#dv-list').innerHTML = sorted.map(id => {
+    const cls = [removeMode ? 'rm' : '', !removeMode && fusable.has(id) ? 'fusable' : ''].filter(Boolean).join(' ');
+    return cardHTML(id, { cls });
+  }).join('');
+}
 function openDeck(forRemove, after, ctx){
   removeMode = !!forRemove; removeAfter = after || null; removeCtx = ctx || null;
-  const sorted = G.deck.slice().sort((a,b)=>{
-    const A = CARDS[a], Bc = CARDS[b];
-    if(A.c !== Bc.c) return A.c - Bc.c;
-    return A.n.localeCompare(Bc.n, 'ko');
-  });
   $('#dv-title').textContent = removeMode ? '지울 각인을 고르시오' : '덱';
-  $('#dv-desc').textContent  = removeMode ? '한 장이 영구히 사라집니다.' : `${G.deck.length}장`;
-  $('#dv-list').innerHTML = sorted.map(id => cardHTML(id, { cls: removeMode ? 'rm' : '' })).join('');
   $('#dv-close').textContent = removeMode ? '취소' : '닫기';
+  renderDeckList();
   ov('ov-deck', true);
 }
+
+/* ── 카드 합성: 덱 보기에서 같은 카드를 클릭해 고르고, 짝을 클릭하면 합쳐진다 ──
+   (드래그 방식은 카드가 부채꼴로 겹쳐 있는 레이아웃 + 카드 안의 <img> 때문에
+   드롭 판정이 자꾸 어긋나서, 좌표 계산이 필요 없는 클릭 선택 방식으로 바꿨다) */
+let fusing = false, fuseSelId = null, fuseSelEl = null;
+function removeOneFromDeck(id){
+  const idx = G.deck.indexOf(id);
+  if(idx >= 0) G.deck.splice(idx, 1);
+}
+function clearFuseSelection(){
+  if(fuseSelEl) fuseSelEl.classList.remove('fsel');
+  fuseSelEl = null; fuseSelId = null;
+}
+async function handleFuseClick(el){
+  if(removeMode || fusing) return;
+  const id = el.dataset.card;
+  if(fuseSelEl && fuseSelEl !== el && fuseSelId === id){
+    // 같은 카드를 고른 상태에서 짝을 클릭 -> 합성
+    const a = fuseSelEl, b = el;
+    clearFuseSelection();
+    await fuseCards(id, a, b);
+    return;
+  }
+  if(fuseSelEl === el){ clearFuseSelection(); return; } // 다시 누르면 선택 취소
+  clearFuseSelection();
+  fuseSelEl = el; fuseSelId = id;
+  el.classList.add('fsel');
+  SFX.play('ui');
+  toast('합칠 같은 각인을 하나 더 고르시오');
+}
+function cloneCardAt(el){
+  const r = el.getBoundingClientRect();
+  const clone = el.cloneNode(true);
+  clone.style.position = 'fixed';
+  clone.style.left = r.left + 'px'; clone.style.top = r.top + 'px';
+  clone.style.width = r.width + 'px'; clone.style.height = r.height + 'px';
+  clone.style.margin = '0'; clone.style.zIndex = '5000';
+  clone.style.transform = 'none'; clone.style.transition = 'none';
+  clone.style.pointerEvents = 'none';
+  document.body.appendChild(clone);
+  return clone;
+}
+function fuseRing(x, y){
+  for(let i = 0; i < 3; i++){
+    const d = document.createElement('div');
+    d.className = 'shockring';
+    d.style.position = 'fixed'; d.style.zIndex = '5000';
+    d.style.left = x + 'px'; d.style.top = y + 'px';
+    d.style.borderColor = 'rgba(217,180,99,.95)';
+    d.style.borderWidth = (4 - i) + 'px';
+    d.style.animationDelay = (i * 110) + 'ms';
+    document.body.appendChild(d);
+    setTimeout(()=> d.remove(), 1100);
+  }
+}
+// 충돌 순간의 짧은 섬광
+function fuseFlash(x, y){
+  const f = document.createElement('div');
+  f.style.cssText = `position:fixed; left:${x}px; top:${y}px; width:14px; height:14px; margin:-7px 0 0 -7px;
+    border-radius:50%; z-index:4999; pointer-events:none;
+    background:radial-gradient(circle, rgba(255,246,220,.98), rgba(217,180,99,.55) 42%, transparent 72%);`;
+  document.body.appendChild(f);
+  f.animate([
+    { transform:'scale(1)', opacity:1 },
+    { transform:'scale(40)', opacity:0 }
+  ], { duration:360, easing:'cubic-bezier(.15,.8,.3,1)', fill:'forwards' });
+  setTimeout(()=> f.remove(), 400);
+}
+// 불티처럼 사방으로 튀는 스파크
+function fuseSparks(x, y){
+  const n = 16;
+  for(let i = 0; i < n; i++){
+    const ang = (i / n) * Math.PI * 2 + (Math.random() * 0.5 - 0.25);
+    const dist = 64 + Math.random() * 90;
+    const dx = Math.cos(ang) * dist, dy = Math.sin(ang) * dist;
+    const sz = 3 + Math.random() * 4;
+    const s = document.createElement('div');
+    s.style.cssText = `position:fixed; left:${x}px; top:${y}px; width:${sz}px; height:${sz}px;
+      margin:${(-sz/2).toFixed(1)}px 0 0 ${(-sz/2).toFixed(1)}px; border-radius:50%; z-index:5000; pointer-events:none;
+      background:${Math.random() > .5 ? '#FFE3B0' : '#D9B463'}; box-shadow:0 0 8px rgba(217,180,99,.9);`;
+    document.body.appendChild(s);
+    s.animate([
+      { transform:'translate(0,0) scale(1)', opacity:1 },
+      { transform:`translate(${dx.toFixed(0)}px, ${dy.toFixed(0)}px) scale(.15)`, opacity:0 }
+    ], { duration:520 + Math.random() * 180, easing:'cubic-bezier(.2,.7,.4,1)', fill:'forwards' });
+    setTimeout(()=> s.remove(), 760);
+  }
+}
+async function playFuseFX(elA, elB, newId){
+  const rA = elA.getBoundingClientRect(), rB = elB.getBoundingClientRect();
+  const ovRect = $('#ov-deck').getBoundingClientRect();
+  const cx = ovRect.left + ovRect.width / 2, cy = ovRect.top + ovRect.height / 2;
+  const cloneA = cloneCardAt(elA), cloneB = cloneCardAt(elB);
+  elA.style.visibility = 'hidden'; elB.style.visibility = 'hidden';
+  const dxA = cx - (rA.left + rA.width / 2), dyA = cy - (rA.top + rA.height / 2);
+  const dxB = cx - (rB.left + rB.width / 2), dyB = cy - (rB.top + rB.height / 2);
+  const dur = 360;
+  const goA = cloneA.animate([
+    { transform:'none', opacity:1 },
+    { transform:`translate(${(dxA*.55).toFixed(0)}px, ${(dyA*.55).toFixed(0)}px) scale(.7) rotate(-12deg)`, opacity:.9, offset:.6 },
+    { transform:`translate(${dxA.toFixed(0)}px, ${dyA.toFixed(0)}px) scale(.08) rotate(-24deg)`, opacity:0 }
+  ], { duration:dur, easing:'cubic-bezier(.4,0,.6,1)', fill:'forwards' });
+  const goB = cloneB.animate([
+    { transform:'none', opacity:1 },
+    { transform:`translate(${(dxB*.55).toFixed(0)}px, ${(dyB*.55).toFixed(0)}px) scale(.7) rotate(12deg)`, opacity:.9, offset:.6 },
+    { transform:`translate(${dxB.toFixed(0)}px, ${dyB.toFixed(0)}px) scale(.08) rotate(24deg)`, opacity:0 }
+  ], { duration:dur, easing:'cubic-bezier(.4,0,.6,1)', fill:'forwards' });
+  SFX.play('fuse');
+  await Promise.all([goA.finished, goB.finished]).catch(()=>{});
+  cloneA.remove(); cloneB.remove();
+
+  // 충돌의 순간 — 섬광 + 링 + 스파크 + 살짝 흔들림
+  fuseFlash(cx, cy);
+  fuseRing(cx, cy);
+  fuseSparks(cx, cy);
+  pulseClass($('#ov-deck'), 'fuse-shake', 340);
+  SFX.play('reward');
+
+  const host = document.createElement('div');
+  host.style.position = 'fixed'; host.style.zIndex = '5000'; host.style.pointerEvents = 'none';
+  host.style.left = (cx - 81) + 'px'; host.style.top = (cy - 112) + 'px';
+  host.innerHTML = cardHTML(newId);
+  document.body.appendChild(host);
+  const card = host.querySelector('.card');
+  if(card) card.animate([
+    { transform:'scale(.15)', opacity:0, filter:'brightness(2.8) saturate(1.5)' },
+    { transform:'scale(1.22)', opacity:1, filter:'brightness(1.8) saturate(1.25)', offset:.5 },
+    { transform:'scale(.96)', opacity:1, filter:'brightness(1.15)', offset:.78 },
+    { transform:'scale(1)', opacity:1, filter:'brightness(1)' }
+  ], { duration:520, easing:'cubic-bezier(.34,1.4,.64,1)', fill:'forwards' });
+  await wait(560);
+  host.animate([{ opacity:1 }, { opacity:0 }], { duration:200, fill:'forwards' });
+  await wait(200);
+  host.remove();
+}
+async function fuseCards(id, elA, elB){
+  if(fusing) return;
+  fusing = true;
+  const { base, tier } = parseCid(id);
+  const newId = makeCid(base, tier + 1);
+  removeOneFromDeck(id); removeOneFromDeck(id);
+  G.deck.push(newId);
+  G.stats.cardsFused = (G.stats.cardsFused || 0) + 1;
+  log('CARD_FUSE', `${cardLabel(id)} ×2 → ${cardLabel(newId)}`);
+  try { await playFuseFX(elA, elB, newId); } catch(err){ console.error('fuse fx error', err); }
+  fusing = false;
+  renderDeckList();
+  renderTopHUD();
+}
+const dvListEl = $('#dv-list');
+dvListEl.addEventListener('click', e => {
+  const el = e.target.closest('.card.fusable');
+  if(!el) return;
+  handleFuseClick(el);
+});
 function openPile(which){
   if(!C) return;
   const arr = which === 'draw' ? C.draw : C.discard;
   const sorted = arr.slice().sort((a,b)=>{
-    const A = CARDS[a], Bc = CARDS[b];
+    const A = cardDef(a), Bc = cardDef(b);
     if(A.c !== Bc.c) return A.c - Bc.c;
     return A.n.localeCompare(Bc.n, 'ko');
   });
@@ -3040,7 +3310,7 @@ function renderMap(){
       ].join(' ');
       h += `<div class="${cls}" data-l="${li}" data-n="${ni}" style="${dim?'opacity:.22':''}">
         <div class="node-disc">${ico(NODE_ICON[node.t])}</div>
-        <div class="node-label">${NODE_LABEL[node.t]}</div>
+        <div class="node-type">${NODE_LABEL[node.t]}</div>
         <div class="node-note">${esc(node.name)}</div>
       </div>`;
     });
@@ -3190,7 +3460,7 @@ function exportText(){
   });
   L.push('');
   L.push('[최종 덱]');
-  L.push('  ' + G.deck.map(id => CARDS[id].n).join(', '));
+  L.push('  ' + G.deck.map(cardLabel).join(', '));
   L.push('');
   L.push('[타임라인]');
   G.log.forEach(e => L.push(`  ${tstr(e.t)}  ${e.ev}${e.d ? '  ' + e.d : ''}`));
@@ -3374,10 +3644,10 @@ function beginDrag(el, ev){
   const i = parseInt(el.dataset.i, 10);
   const id = C.hand[i];
   if(id === undefined) return;
-  const c = CARDS[id];
+  const c = cardDef(id);
   if(C.energy < c.c){ nopeCard(el, i); return; }
   const b = cardBase(el);
-  drag = { el, i, id, targeted: !SELF_CARDS.includes(id), moved:false,
+  drag = { el, i, id, targeted: !SELF_CARDS.includes(parseCid(id).base), moved:false,
            startX:ev.clientX, startY:ev.clientY, b, over:false };
   el.setPointerCapture && el.setPointerCapture(ev.pointerId);
   spreadHand(-1);
@@ -3642,7 +3912,7 @@ $('#dv-list').addEventListener('click', e => {
   const id = c.dataset.card;
   const idx = G.deck.indexOf(id);
   if(idx >= 0) G.deck.splice(idx, 1);
-  log('CARD_REMOVE', CARDS[id].n);
+  log('CARD_REMOVE', cardLabel(id));
   ov('ov-deck', false);
   const after = removeAfter;
   removeMode = false; removeAfter = null; removeCtx = null;
@@ -3727,7 +3997,7 @@ curScene = null;
 applyScene('title');
 const tbg = $('#title-bg'); if(tbg && TITLE_BG_ART) tbg.src = TITLE_BG_ART;
 $('#title-hero').innerHTML = TITLE_ART;
-$('#hero-art').innerHTML = HEROES.ash + `<div class="unit-shadow"></div><div id="blockbadge" class="blockbadge" style="display:none"></div>`;
+$('#hero-art').innerHTML = heroArtHTML('ash') + `<div class="unit-shadow"></div><div id="blockbadge" class="blockbadge" style="display:none"></div>`;
 requestAnimationFrame(parallaxTick);
 
 // 사운드 토글
