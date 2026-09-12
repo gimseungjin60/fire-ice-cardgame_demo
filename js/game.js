@@ -722,11 +722,8 @@ window.addEventListener('pointermove', e => {
 // 캐릭터 선택 화면 전용 고해상도 초상화.
 // 값이 있으면 선택 화면 대형 아트에 쓰이고, 없으면 HEROES의 SVG 실루엣으로 대체된다.
 // 인게임 전투 중에는 항상 SVG 실루엣을 쓴다 (연출·색조 시스템과 맞춰야 하므로).
-const PORTRAITS = {
-  ember: 'assets/heroes/ember.webp',
-  frost: null,
-  ash: null,
-};
+// assets/heroes/{캐릭터id}.webp 파일이 있으면 자동으로 채워진다 (js/asset-manifest.js 참고).
+const PORTRAITS = (window.ASSET_MANIFEST && window.ASSET_MANIFEST.heroes) || {};
 
 const HEROES = {
 
@@ -974,28 +971,16 @@ const HERO_SVG_OLD = `<svg viewBox="0 0 140 190" aria-hidden="true">
 /* ═══════════════════════════════════════════════════════════
    C. 적 — 실루엣 + 발광 방식 (전부 왼쪽을 향함)
    ═══════════════════════════════════════════════════════════ */
-const ENEMY_ART = {
-  guardian: "assets/enemies/guardian.webp",
-  wolf: "assets/enemies/wolf.webp",
-  wisp: "assets/enemies/wisp.webp",
-  warden: "assets/enemies/warden.webp",
-  guardian2: "assets/enemies/guardian2.webp",
-  warden2: "assets/enemies/warden2.webp",
-  boss: "assets/enemies/boss.webp"
-};
-const PROP_ART = {
-  stair: "assets/props/stair.webp",
-  frostpass: "assets/props/frostpass.webp",
-  gate: "assets/props/gate.webp",
-  camp: "assets/props/camp.webp",
-  court: "assets/props/court.webp",
-  observ: "assets/props/observ.webp",
-  abyss: "assets/props/abyss.webp",
-  shop: "assets/props/shop.webp",
-  end: "assets/props/end.webp"
-};
-const SHOPKEEPER_ART = "assets/npc/shopkeeper.webp";
-const TITLE_BG_ART = "assets/bg/title.jpg";
+// 아래 4개 상수는 assets/ 폴더를 스캔해 생성되는 js/asset-manifest.js(window.ASSET_MANIFEST)에서
+// 채워진다. 파일을 추가/교체/삭제했으면 `node scripts/gen-asset-manifest.js`를 다시 실행할 것.
+// 자세한 규칙은 ASSETS.md 참고.
+const AM = window.ASSET_MANIFEST || {};
+const ENEMY_ART = AM.enemies || {};
+const PROP_ART = AM.props || {};
+const SHOPKEEPER_ART = (AM.npc && AM.npc.shopkeeper) || null;
+const TITLE_BG_ART = (AM.bg && AM.bg.title) || null;
+// 카드 아트 (Phase B에서 사용) — assets/cards/{파일명}.webp
+const CARD_ART = AM.cards || {};
 
 // 적 각인 아트 (실제 자산 없을 때의 대체)
 const ART = {
@@ -3116,7 +3101,7 @@ function enterNode(li, ni){
     applyScene('rest'); show('map-screen'); openRest();
   } else if(node.t === 'shop'){
     applyScene('shop'); show('map-screen'); openShop();
-    const skEl = $('#shopkeeper-img'); if(skEl) skEl.src = SHOPKEEPER_ART;
+    const skEl = $('#shopkeeper-img'); if(skEl && SHOPKEEPER_ART) skEl.src = SHOPKEEPER_ART;
   }
 }
 function advance(){
@@ -3740,7 +3725,7 @@ document.addEventListener('keydown', e => {
 
 curScene = null;
 applyScene('title');
-const tbg = $('#title-bg'); if(tbg) tbg.src = TITLE_BG_ART;
+const tbg = $('#title-bg'); if(tbg && TITLE_BG_ART) tbg.src = TITLE_BG_ART;
 $('#title-hero').innerHTML = TITLE_ART;
 $('#hero-art').innerHTML = HEROES.ash + `<div class="unit-shadow"></div><div id="blockbadge" class="blockbadge" style="display:none"></div>`;
 requestAnimationFrame(parallaxTick);
