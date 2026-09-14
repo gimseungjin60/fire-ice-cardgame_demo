@@ -767,6 +767,7 @@ html,body{ background:#05060A; }
 .tb-btn:hover{ color:#EFE7D6; border-color:rgba(217,180,99,.5); background:rgba(217,180,99,.08) }
 .tb-btn svg{ width:16px; height:16px }
 .tb-btn b{ font-size:13px; font-variant-numeric:tabular-nums }
+#tb-export.copied{ color:var(--moss,#6FA678); border-color:rgba(111,166,120,.55); background:rgba(111,166,120,.1) }
 #snd{ margin-left:10px }
 /* 상단바 포션 */
 .tb-potions .potion{ width:28px; height:34px; border-radius:6px }
@@ -938,8 +939,11 @@ body.has-floor #floor{opacity:1}
 .unit-art svg{width:100%;height:100%;overflow:visible;display:block}
 .unit-shadow{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:64%;height:15px;
   border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.6),transparent 70%);pointer-events:none}
-#hero-art{width:clamp(178px,25vw,270px);height:clamp(222px,31vw,335px);position:relative}
-#enemy-art{width:clamp(222px,34vw,380px);height:clamp(222px,34vw,380px);position:relative}
+/* 가로(vw) 기준만으로 키우면, 낮고 넓은 창에서는 유닛 칼럼(의도 말풍선+아트+이름+
+   체력바)이 stage-row보다 커져서 의도 말풍선이 topbar 위로 밀려 잘린다 — 세로(vh)
+   상한도 같이 걸어 짧은 창에서는 자동으로 줄어들게 한다. */
+#hero-art{width:clamp(178px,min(25vw,28vh),270px);height:clamp(222px,min(31vw,35vh),335px);position:relative}
+#enemy-art{width:clamp(222px,min(34vw,40vh),380px);height:clamp(222px,min(34vw,40vh),380px);position:relative}
 /* 실사 초상화 모드 — SVG 실루엣과 같은 자리에서 같은 연출을 받는다 */
 .photo-wrap{ width:100%; height:100%; display:flex; align-items:center; justify-content:center;
   animation:photoBreathe 4.6s ease-in-out infinite; will-change:transform }

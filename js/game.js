@@ -1933,7 +1933,29 @@ function enemyAtkVal(base){
   if(C.e.weak > 0) d = Math.floor(d * 0.75);
   return Math.max(0, d);
 }
+// 의도 말풍선은 적 유닛 칼럼의 맨 위 자식이라, 적 아트가 크면(배경/보스마다 다르다)
+// 칼럼 전체가 위로 밀려 화면(topbar) 밖으로 잘릴 수 있다. #enemy-art/#hero-art를
+// vh 기준으로도 제한해 두긴 했지만, 그래도 항상 topbar 아래 최소 여백 안에 보이도록
+// 마지막 안전장치를 건다 — 레이아웃엔 관여하지 않고 시각적으로만 아래로 밀어낸다.
+function clampIntentToViewport(){
+  const el = $('#intent');
+  if(!el) return;
+  el.style.transform = '';
+  if(!el.innerHTML) return;
+  const topbar = $('#topbar');
+  const minTop = (topbar ? topbar.getBoundingClientRect().bottom : 0) + 20;
+  const r = el.getBoundingClientRect();
+  if(r.top < minTop) el.style.transform = `translateY(${Math.round(minTop - r.top)}px)`;
+}
 function renderIntent(){
+  renderIntentInner();
+  clampIntentToViewport();
+  // 말풍선이 새로 뜰 때 재생되는 340ms 팝인 애니메이션 동안은 위 측정이 그 중간
+  // 프레임(작아지고 위로 밀린 상태)을 잡을 수 있다 — 애니메이션이 끝난 뒤 한 번 더
+  // 확인해서 확실히 자리 잡게 한다.
+  setTimeout(clampIntentToViewport, 380);
+}
+function renderIntentInner(){
   const el = $('#intent');
   if(!C || C.over){ el.innerHTML=''; el.className='intent'; return; }
   const a = C.e.act;
@@ -3453,7 +3475,7 @@ function drawMapLines(){
 }
 window.addEventListener('resize', () => {
   if($('#map-screen').classList.contains('on')) requestAnimationFrame(drawMapLines);
-  if(C) renderHand();
+  if(C){ renderHand(); requestAnimationFrame(clampIntentToViewport); }
 });
 
 function enterNode(li, ni){
@@ -3548,7 +3570,9 @@ function exportText(){
   L.push('재의 회랑 · 플레이 기록');
   L.push('─────────────────────────────');
   L.push(`세션 ${SID}   시드 ${SEED}`);
-  L.push(`결과 ${G.won ? '승리 (보스 처치)' : '패배'}   총 ${tstr(G.totalMs)}`);
+  const resultLabel = !G.done ? `진행 중 (${G.layer+1}/${MAP_LAYERS.length}층, 미완료)`
+    : (G.won ? '승리 (보스 처치)' : '패배');
+  L.push(`결과 ${resultLabel}   총 ${tstr(G.done ? G.totalMs : ms())}`);
   L.push(`캐릭터 ${G.starter ? CHARS[G.starter].name : '-'} (결정 ${(st.deckChoiceMs/1000).toFixed(1)}초)`);
   L.push('');
   L.push('[집계]');
@@ -4075,21 +4099,33 @@ $('#shop-leave').addEventListener('click', () => {
   ov('ov-shop', false); advance();
 });
 
-$('#res-copy').addEventListener('click', async () => {
-  const txt = exportText();
-  try {
-    await navigator.clipboard.writeText(txt);
-    $('#res-copy').textContent = '복사됨';
-    setTimeout(()=> $('#res-copy').textContent = '플레이 기록 복사', 1800);
-  } catch(err){
+// 클립보드 복사 + 실패 시 textarea 폴백. 버튼 안의 아이콘/라벨은 각 호출부가 알아서 바꾼다.
+async function copyPlayRecord(txt){
+  try { await navigator.clipboard.writeText(txt); return true; }
+  catch(err){
     const ta = document.createElement('textarea');
     ta.value = txt; ta.style.position='fixed'; ta.style.left='-9999px';
     document.body.appendChild(ta); ta.select();
-    try { document.execCommand('copy'); $('#res-copy').textContent='복사됨'; }
-    catch(e2){ console.log(txt); $('#res-copy').textContent='콘솔에 출력됨'; }
+    let ok = true;
+    try { document.execCommand('copy'); } catch(e2){ console.log(txt); ok = false; }
     ta.remove();
-    setTimeout(()=> $('#res-copy').textContent = '플레이 기록 복사', 1800);
+    return ok;
   }
+}
+$('#res-copy').addEventListener('click', async () => {
+  const btn = $('#res-copy');
+  const ok = await copyPlayRecord(exportText());
+  btn.textContent = ok ? '복사됨' : '콘솔에 출력됨';
+  setTimeout(()=> btn.textContent = '플레이 기록 복사', 1800);
+});
+// 중도 종료 대비: 런 도중 언제든 지금까지의 기록을 남길 수 있는 상시 버튼.
+// 20분 테스트에서 보스까지 못 가고 시간이 끝나는 테스터가 나올 걸 감안한 것 —
+// 결과 화면(#res-copy)까지 못 가도 이걸로 집계 데이터를 잃지 않는다.
+$('#tb-export').addEventListener('click', async () => {
+  if(!G) return;
+  const btn = $('#tb-export');
+  const ok = await copyPlayRecord(exportText());
+  if(ok){ btn.classList.add('copied'); setTimeout(()=> btn.classList.remove('copied'), 1400); }
 });
 $('#res-again').addEventListener('click', () => { location.reload(); });
 
