@@ -86,7 +86,8 @@ button:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--gold); o
 
 #stage{ flex:1 1 auto; position:relative; overflow:hidden; }
 .screen{ position:absolute; inset:0; display:none; }
-.screen.on{ display:block; }
+.screen.on{ display:block; animation:screenReveal .55s var(--ease) both; }
+@keyframes screenReveal{ from{ opacity:0; transform:scale(1.015); } to{ opacity:1; transform:none; } }
 
 /* ============================================================
    타이틀
@@ -139,9 +140,14 @@ button:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--gold); o
 /* ============================================================
    공통: 화면 헤더
    ============================================================ */
-.sc-head{ padding:30px 30px 0; text-align:center; }
+.sc-head{ padding:30px 30px 0; text-align:center; animation:ovTitleIn .6s var(--ease-back) both .08s; }
 .sc-title{ font-family:var(--font-display); font-weight:700; font-size:27px; letter-spacing:.1em; }
-.sc-desc{ margin-top:9px; font-size:13.5px; color:var(--muted); font-weight:300; }
+.sc-desc{ position:relative; margin-top:13px; padding-top:13px; font-size:13.5px; color:var(--muted); font-weight:300; }
+.sc-desc::before{
+  content:''; position:absolute; left:50%; top:0; transform:translateX(-50%);
+  width:56px; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent);
+  opacity:.55;
+}
 
 /* ============================================================
    덱 선택
@@ -234,18 +240,42 @@ button:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--gold); o
 .map-node.avail:hover{ transform:translateY(-5px); }
 .map-node.avail:hover .node-disc{ transform:scale(1.09); }
 @keyframes nodeGlow{ 0%,100%{ opacity:.4; } 50%{ opacity:.95; } }
+/* 구간 종류마다 배지 모양 자체를 다르게 — 색만 다른 같은 동그라미 말고
+   전투=각진 육각형, 정예=날카로운 다이아몬드, 야영지=둥글고 푸근한 사각,
+   세공사=보석 컷, 보스=육중한 팔각형. ::after 발광 테두리도 같은 clip-path를
+   써서 모양을 그대로 따라간다. */
+.map-node.battle .node-disc,
+.map-node.battle .node-disc::after{
+  border-radius:8px;
+  clip-path:polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+}
 .map-node.elite .node-disc{ border-color:rgba(196,56,75,.4); }
+.map-node.elite .node-disc,
+.map-node.elite .node-disc::after{
+  border-radius:6px;
+  clip-path:polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%);
+}
 .map-node.elite.avail .node-disc{ border-color:var(--blood); }
 .map-node.elite.avail .node-disc::after{ box-shadow:0 0 0 1.5px var(--blood), 0 0 24px rgba(196,56,75,.55); }
 .map-node.elite.avail .node-disc svg{ color:var(--blood); }
 .map-node.elite.avail .node-type{ color:#E4899A; }
-.map-node.rest .node-disc{ border-color:rgba(111,166,120,.3); }
+.map-node.rest .node-disc{ border-color:rgba(111,166,120,.3); border-radius:28%; }
 .map-node.rest.avail .node-disc svg{ color:var(--moss); }
-.map-node.rest.avail .node-disc::after{ box-shadow:0 0 0 1.5px var(--moss), 0 0 22px rgba(111,166,120,.5); }
+.map-node.rest.avail .node-disc::after{ border-radius:28%; box-shadow:0 0 0 1.5px var(--moss), 0 0 22px rgba(111,166,120,.5); }
 .map-node.shop .node-disc{ border-color:rgba(217,180,99,.3); }
+.map-node.shop .node-disc,
+.map-node.shop .node-disc::after{
+  border-radius:5px;
+  clip-path:polygon(50% 0%, 85% 22%, 100% 58%, 68% 100%, 32% 100%, 0% 58%, 15% 22%);
+}
 .map-node.boss .node-disc{
   width:76px; height:76px;
   background:radial-gradient(120% 120% at 32% 26%, #3A1420, #0E1017 62%), linear-gradient(160deg,#2A1018,#0E1017);
+}
+.map-node.boss .node-disc,
+.map-node.boss .node-disc::after{
+  border-radius:10px;
+  clip-path:polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
 }
 .map-node.boss .node-disc svg{ width:36px; height:36px; }
 .map-node.boss .node-note{ font-size:14.5px; }
@@ -497,17 +527,34 @@ button:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--gold); o
    ============================================================ */
 .overlay{
   position:absolute; inset:0; z-index:300;
-  background:rgba(6,8,13,.96);
+  /* 뒤에 씬(전투 배경 사진 포함)이 흐릿하게 비치게 — 완전히 가리는 평면 블록 대신
+     장막을 친 느낌. 그 위로 위/아래 비네트를 더해 가운데 내용에 시선이 모이게 한다. */
+  background:
+    radial-gradient(64% 56% at 50% 42%, rgba(9,11,17,.55), rgba(6,8,13,.92) 72%),
+    linear-gradient(180deg, rgba(4,5,8,.88) 0%, transparent 18%, transparent 82%, rgba(4,5,8,.9) 100%);
+  backdrop-filter:blur(7px) saturate(1.08);
+  -webkit-backdrop-filter:blur(7px) saturate(1.08);
   display:none; flex-direction:column; align-items:center; justify-content:center; padding:24px;
   animation:ovIn .3s var(--ease);
 }
 .overlay.on{ display:flex; }
 @keyframes ovIn{ from{opacity:0;} to{opacity:1;} }
-.ov-title{ font-family:var(--font-display); font-weight:700; font-size:26px; letter-spacing:.14em; text-align:center; }
+.ov-title{ font-family:var(--font-display); font-weight:700; font-size:26px; letter-spacing:.14em; text-align:center;
+  animation:ovTitleIn .5s var(--ease-back) both .05s; }
+@keyframes ovTitleIn{ from{ opacity:0; transform:translateY(-10px) scale(.94); } to{ opacity:1; transform:none; } }
 .ov-desc{ margin-top:9px; font-size:13.5px; color:var(--muted); text-align:center; font-weight:300; }
-.ov-cards{ display:flex; gap:22px; margin:30px 0; flex-wrap:wrap; justify-content:center; }
-.pick{ position:relative; transition:transform .24s var(--ease); animation:pickIn .45s var(--ease-back) both; }
+/* 보상/결과 현판 아래 가느다란 금선 하나로 마무리감을 더한다 */
+#ov-reward .ov-desc, #ov-result .ov-desc{ position:relative; padding-top:15px; margin-top:15px; }
+#ov-reward .ov-desc::before, #ov-result .ov-desc::before{
+  content:''; position:absolute; left:50%; top:0; transform:translateX(-50%);
+  width:64px; height:1px; background:linear-gradient(90deg,transparent,var(--gold),transparent);
+  opacity:.6;
+}
+.ov-cards{ display:flex; gap:26px; margin:34px 0; flex-wrap:wrap; justify-content:center; }
+.pick{ position:relative; transition:transform .24s var(--ease), filter .24s var(--ease);
+  animation:pickIn .45s var(--ease-back) both; }
 @keyframes pickIn{ from{ opacity:0; transform:translateY(28px) scale(.9);} to{ opacity:1; transform:none;} }
+.pick:hover{ filter:drop-shadow(0 18px 30px rgba(0,0,0,.55)) drop-shadow(0 0 26px rgba(217,180,99,.35)); }
 .pick:hover{ transform:translateY(-11px); }
 .pick .card{ position:relative; }
 .pick-price{ margin-top:11px; text-align:center; font-size:13px; font-weight:700; color:var(--gold); }
@@ -632,6 +679,13 @@ html,body{ background:#05060A; }
   animation:breathGlow 11s ease-in-out infinite;
 }
 @keyframes breathGlow{ 0%,100%{opacity:.78} 50%{opacity:.94} }
+
+/* 적/장소별 실사 배경 사진 — 있을 때만 켜지고(JS가 .on 토글), 원경/중경/근경
+   실루엣을 대신한다. 안개·빛기둥·천장·액자 등 장식 레이어는 이 위에 그대로 얹힌다. */
+#bgphoto{ opacity:0; }
+#bgphoto.on{ opacity:1; }
+#bgphoto img{ position:absolute; inset:0; width:100%; height:100%;
+  object-fit:cover; object-position:center 55%; display:block; }
 
 /* 대기 원근: 멀수록 밝고 흐리게, 가까울수록 새까맣게 */
 #far{ filter:brightness(1.9) saturate(.55) blur(1.6px); opacity:.9 }
@@ -884,8 +938,8 @@ body.has-floor #floor{opacity:1}
 .unit-art svg{width:100%;height:100%;overflow:visible;display:block}
 .unit-shadow{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:64%;height:15px;
   border-radius:50%;background:radial-gradient(ellipse,rgba(0,0,0,.6),transparent 70%);pointer-events:none}
-#hero-art{width:clamp(132px,18vw,192px);height:clamp(166px,22.5vw,240px);position:relative}
-#enemy-art{width:clamp(164px,25vw,268px);height:clamp(164px,25vw,268px);position:relative}
+#hero-art{width:clamp(178px,25vw,270px);height:clamp(222px,31vw,335px);position:relative}
+#enemy-art{width:clamp(222px,34vw,380px);height:clamp(222px,34vw,380px);position:relative}
 /* 실사 초상화 모드 — SVG 실루엣과 같은 자리에서 같은 연출을 받는다 */
 .photo-wrap{ width:100%; height:100%; display:flex; align-items:center; justify-content:center;
   animation:photoBreathe 4.6s ease-in-out infinite; will-change:transform }
@@ -982,8 +1036,8 @@ body.has-floor #floor{opacity:1}
   .hand-zone{height:164px}
   .qa-brand span:last-child{display:none}
   .stage-row{padding:2px 1% 8px;gap:0}
-  #hero-art{width:108px;height:136px}
-  #enemy-art{width:136px;height:136px}
+  #hero-art{width:154px;height:192px}
+  #enemy-art{width:192px;height:192px}
   .unit{gap:5px;max-width:49%}
   .unit-name{font-size:12px}
   .hpbar,.hpbar.mine{width:122px;height:13px}
@@ -1007,8 +1061,8 @@ body.has-floor #floor{opacity:1}
   .title-hero{height:150px}
 }
 @media (max-height:720px) and (min-width:901px){
-  #hero-art{width:118px;height:148px}
-  #enemy-art{width:158px;height:158px}
+  #hero-art{width:166px;height:209px}
+  #enemy-art{width:221px;height:221px}
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -1370,14 +1424,16 @@ body.has-floor #floor{opacity:1}
   text-shadow:0 1px 0 rgba(255,255,255,.4);
 }
 
-/* 합성 가능 표시 (덱 보기 전용) — box-shadow 대신 opacity만 애니메이션 (성능) */
-.deck-view .card.fusable{ cursor:pointer; }
+/* 합성 가능 표시 (덱 보기 전용) — box-shadow 자체는 고정해두고 opacity만
+   애니메이션한다(성능). 후광을 더 확실하게 보이도록 테두리+중간 블룸+
+   바깥 블룸 3겹으로 쌓았다. */
+.deck-view .card.fusable{ cursor:pointer; touch-action:none; }
 .deck-view .card.fusable .card-inner::after{
-  content:''; position:absolute; inset:-3px; border-radius:16px; z-index:10; pointer-events:none;
-  box-shadow:0 0 0 2px var(--gold), 0 0 26px rgba(217,180,99,.55);
-  opacity:.45; animation:fusableGlow 2.4s ease-in-out infinite; will-change:opacity;
+  content:''; position:absolute; inset:-6px; border-radius:19px; z-index:10; pointer-events:none;
+  box-shadow:0 0 0 2.5px var(--gold), 0 0 20px rgba(217,180,99,.75), 0 0 52px rgba(217,180,99,.5);
+  opacity:.5; animation:fusableGlow 2.2s ease-in-out infinite; will-change:opacity;
 }
-@keyframes fusableGlow{ 0%,100%{ opacity:.4; } 50%{ opacity:.95; } }
+@keyframes fusableGlow{ 0%,100%{ opacity:.45; } 50%{ opacity:1; } }
 
 /* 카드 합성: 클릭으로 하나를 고르면 살짝 들리고 확실한 금색 테두리가 켜진다.
    짝이 되는(같은 id) 다른 카드를 클릭하면 합성이 실행된다. */
@@ -1386,6 +1442,14 @@ body.has-floor #floor{opacity:1}
   animation:none; opacity:1; box-shadow:0 0 0 3px var(--gold), 0 0 44px rgba(217,180,99,.85);
 }
 #ov-deck.fuse-shake{ animation:shake .34s; }
+
+/* 카드 합성: 짝 위로 끌어다 놓는 방식 — 끌리는 쪽은 흐려지고, 짝이 되는 자리는
+   fsel과 같은 확실한 금색 테두리로 "여기 놓으면 합쳐진다"를 알려준다. */
+#dv-list .card.fdragging{ opacity:.32; }
+#dv-list .card.fdrop{ transform:translateY(-14px) scale(.9); z-index:81; }
+#dv-list .card.fdrop .card-inner::after{
+  animation:none; opacity:1; box-shadow:0 0 0 3px var(--gold), 0 0 44px rgba(217,180,99,.85);
+}
 
 /* 보상/덱 보기에서는 살짝 축소 */
 .deck-view .card{ transform:scale(.8); margin:-22px -16px }
@@ -1460,16 +1524,29 @@ body.has-floor #floor{opacity:1}
 #end-turn:disabled{ filter:grayscale(.7) }
 .pile{ background:linear-gradient(168deg,rgba(30,36,52,.85),rgba(12,15,23,.9)) }
 
-/* 체력바: 눈금 + 광택 */
-.hpbar{ border-radius:4px }
-.hpbar i, .hpbar .ghost{ border-radius:3px }
-.hpbar::after{
-  content:''; position:absolute; inset:0; border-radius:4px; pointer-events:none; z-index:3;
-  background:repeating-linear-gradient(90deg,transparent 0 31px,rgba(0,0,0,.2) 31px 32px),
-             linear-gradient(180deg,rgba(255,255,255,.13),transparent 44%);
+/* 체력바 — 캐릭터가 커진 만큼 더 두툼하게, 금/비취 테두리로 무게감을 주고
+   위쪽엔 광택 하이라이트, 숫자는 더 크고 또렷하게 */
+.hpbar{
+  height:20px; border-radius:7px;
+  border:1px solid rgba(217,180,99,.4);
+  box-shadow:0 4px 16px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.07), inset 0 0 0 1px rgba(0,0,0,.45);
 }
-.hpbar span{ font-size:11px; letter-spacing:.04em }
-.unit-name{ font-size:15.5px; letter-spacing:.13em }
+.hpbar.mine{ border-color:rgba(111,166,120,.45); }
+.hpbar i{
+  border-radius:6px;
+  background:linear-gradient(180deg, #FF8FA0 0%, #E14A5E 44%, #971F32 100%);
+}
+.hpbar.mine i{ background:linear-gradient(180deg, #86E8B4 0%, #4FBF87 44%, #256B49 100%); }
+.hpbar .ghost{ border-radius:6px }
+.hpbar::after{
+  content:''; position:absolute; inset:0; border-radius:7px; pointer-events:none; z-index:3;
+  background:repeating-linear-gradient(90deg,transparent 0 31px,rgba(0,0,0,.22) 31px 32px),
+             linear-gradient(180deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.05) 22%,transparent 48%);
+}
+.hpbar span{ font-size:12.5px; font-weight:700; letter-spacing:.03em;
+  text-shadow:0 1px 2px rgba(0,0,0,.95), 0 0 7px rgba(0,0,0,.65); }
+.unit-name{ font-size:16.5px; letter-spacing:.14em; color:#EFE7D6;
+  text-shadow:0 2px 6px rgba(0,0,0,.7); }
 
 /* 의도 말풍선 */
 .intent{ padding:9px 17px; border-radius:12px; background:rgba(8,10,16,.86) }
@@ -1538,7 +1615,10 @@ body.has-floor #floor{opacity:1}
 
 /* 손패 부채꼴 배치 — 인라인 변수 기반 */
 /* flex 컨테이너가 이미 중앙 정렬하므로 -50% 없이 오프셋만 적용 */
+/* 손에 든 카드는 덱 보기/보상 등 다른 카드보다 살짝 작게 — 포커 패처럼 쥔 채로
+   좁게 모은 느낌을 낸다 (간격은 renderHand()의 gap 계산에서 같이 좁힌다) */
 .card.inhand{
+  width:144px; height:198px;
   transform: translateX(calc(var(--tx,0px) + var(--ex,0px))) translateY(var(--ty,0px)) rotate(var(--rot,0deg));
 }
 .card.inhand.playable:hover{

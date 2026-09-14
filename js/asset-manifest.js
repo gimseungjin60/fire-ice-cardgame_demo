@@ -51,6 +51,14 @@ window.ASSET_MANIFEST = {
     "shopkeeper": "assets/npc/shopkeeper.webp"
   },
   "bg": {
+    "bg_abyss": "assets/bg/bg_abyss.jpg",
+    "bg_court": "assets/bg/bg_court.jpg",
+    "bg_end": "assets/bg/bg_end.jpg",
+    "bg_frostpass": "assets/bg/bg_frostpass.jpg",
+    "bg_gate": "assets/bg/bg_gate.jpg",
+    "bg_map": "assets/bg/bg_map.jpg",
+    "bg_observ": "assets/bg/bg_observ.jpg",
+    "bg_stair": "assets/bg/bg_stair.jpg",
     "title": "assets/bg/title.jpg"
   }
 };

@@ -617,17 +617,29 @@ function applyScene(key){
   layers.classList.add('swap');
   setTimeout(() => {
     $('#stars').innerHTML = SV(`<g fill="#fff">${STARFIELD}</g>`, 'xMidYMid slice');
-    $('#far').innerHTML   = FAR[s.far]   || '';
-    $('#mid').innerHTML   = MID[s.mid]   || '';
-    $('#near').innerHTML  = NEAR[s.near] || '';
+    const propKey = PROP_SCENE_MAP[key];
+    // 적/장소에 맞는 실사 배경 사진이 있으면 그걸 깔고, 원경/중경/근경 실루엣은
+    // 사진과 겹쳐 지저분해지지 않게 비운다 — 안개·빛기둥·천장·액자·모트 같은
+    // 장식 레이어는 그대로 사진 위에 계속 얹힌다. 사진이 없는 장소는 지금처럼
+    // 절차적 실루엣을 그대로 쓴다. 씬 키 자체와 이름이 같은 파일(bg_map.jpg 등)을
+    // 먼저 찾고, 없으면 전투 장소는 PROP_SCENE_MAP 매핑(bg_stair.jpg 등)으로 찾는다.
+    const bgImg = BG_ART['bg_' + key] || (propKey && BG_ART['bg_' + propKey]);
+    const bgEl = $('#bgphoto');
+    if(bgEl){
+      bgEl.classList.toggle('on', !!bgImg);
+      bgEl.innerHTML = bgImg ? `<img src="${bgImg}" alt="">` : '';
+    }
+    $('#far').innerHTML   = bgImg ? '' : (FAR[s.far]   || '');
+    $('#mid').innerHTML   = bgImg ? '' : (MID[s.mid]   || '');
+    $('#near').innerHTML  = bgImg ? '' : (NEAR[s.near] || '');
     const rayEl = $('#rays'); if(rayEl && !rayEl.innerHTML) rayEl.innerHTML = RAYS;
     const vEl = $('#vault'); if(vEl) vEl.innerHTML = VAULTS[s.vault || 'arch'] || '';
     const frEl = $('#frame'); if(frEl) frEl.innerHTML = FRAMES[s.frame || 'stone'] || '';
     document.body.classList.toggle('has-floor', !!s.floor);
-    const propKey = PROP_SCENE_MAP[key];
     const propEl = $('#propimg');
     if(propEl){
-      const img = propKey && PROP_ART[propKey];
+      // 소품 사진은 지금 큰 배경 사진이 같은 장소를 이미 보여줄 때는 겹치므로 끈다.
+      const img = !bgImg && propKey && PROP_ART[propKey];
       propEl.classList.toggle('on', !!img);
       propEl.innerHTML = img ? `<div class="photo-wrap"><img class="prop-photo" src="${img}" alt=""></div>` : '';
     }
@@ -681,23 +693,10 @@ function spawnMotes(kind){
 // 1) 레이어 목록은 씬이 바뀔 때만 다시 캐시한다.
 // 2) 사진이 들어가는 무거운 레이어(propimg/vault/frame)는 패럴랙스 대상에서 뺀다 — 시각적 손실은 미미하고 비용은 크다.
 // 3) 마우스가 거의 안 움직이면 쓰기 자체를 건너뛴다.
-// 실행 중 실제 프레임 속도를 재서 느리면 장식 레이어를 자동으로 줄인다
-let perfLite = false;
-(function perfWatch(){
-  let last = performance.now(), slow = 0, n = 0;
-  function tick(){
-    const now = performance.now(), dt = now - last; last = now;
-    if(++n > 6){
-      if(dt > 40) slow++; else slow = Math.max(0, slow - 1);
-      if(slow > 20 && !perfLite){
-        perfLite = true;
-        document.body.classList.add('perf-lite');
-      }
-    }
-    if(n < 400) requestAnimationFrame(tick);
-  }
-  requestAnimationFrame(tick);
-})();
+// (프레임 속도 감시는 파일 맨 위 watchFrameRate() 하나로 충분하다 —
+//  예전엔 여기 별도의 rAF 감시 루프가 하나 더 있었는데, perf-lite on/off를
+//  중복으로 재는 것 말고는 하는 일이 없어서 매 프레임 낭비만 하고 있었다.)
+const perfLiteOn = () => document.body.classList.contains('perf-lite');
 
 let px = 0, py = 0, tx = 0, ty = 0;
 let parallaxLayers = null;
@@ -1006,7 +1005,8 @@ const AM = window.ASSET_MANIFEST || {};
 const ENEMY_ART = AM.enemies || {};
 const PROP_ART = AM.props || {};
 const SHOPKEEPER_ART = (AM.npc && AM.npc.shopkeeper) || null;
-const TITLE_BG_ART = (AM.bg && AM.bg.title) || null;
+const BG_ART = AM.bg || {};
+const TITLE_BG_ART = BG_ART.title || null;
 // 카드 아트 (Phase B에서 사용) — assets/cards/{파일명}.webp
 const CARD_ART = AM.cards || {};
 
@@ -1674,6 +1674,7 @@ function newRun(){
   RNG.reset();
   shopStock = null; shopRemoved = false;
   removeMode = false; removeAfter = null; removeCtx = null;
+  fuseHintShown = false;
   G = {
     hp:70, maxHp:70, gold:0,
     deck:[], potions:[null,null],
@@ -2064,7 +2065,9 @@ function renderHand(){
   const swing = Math.sin(mid * rotStep * Math.PI / 180) * cardH * 0.8;
   // 리본과 비용 보석이 카드 밖으로 돌출하므로 여유를 더 둔다
   const room  = w / 2 - 22 - cardW / 2 - swing;
-  const gap = n > 1 ? Math.max(20, Math.min(cardW * 0.82, room / Math.max(.5, mid))) : 0;
+  // 카드 폭의 82% 였던 것 → 62%로 좁혀서 포커 패를 쥐듯 더 촘촘하게 모은다(완전히
+  // 포개지진 않게 최소 20px는 유지)
+  const gap = n > 1 ? Math.max(20, Math.min(cardW * 0.62, room / Math.max(.5, mid))) : 0;
   cards.forEach((el, i) => {
     const off = i - mid;
     const rot = off * rotStep;
@@ -2195,7 +2198,7 @@ function fxAnim(el, frames, dur, ease, delay){
 
 /* ── 투사체 도안 ── */
 const PROJ = {
-  fireball:{ w:132,h:132,spin:0,arc:74,dur:720,col:'#FF8B3D',
+  fireball:{ w:160,h:160,spin:0,arc:74,dur:720,col:'#FF8B3D',
     svg:`<svg viewBox="0 0 132 132"><defs>
       <radialGradient id="fb1"><stop offset="0%" stop-color="#FFFDF4"/><stop offset="26%" stop-color="#FFE08A"/>
       <stop offset="58%" stop-color="#FF7A2E"/><stop offset="86%" stop-color="#D62F0C"/><stop offset="100%" stop-color="#D62F0C" stop-opacity="0"/></radialGradient></defs>
@@ -2207,7 +2210,7 @@ const PROJ = {
       <circle cx="66" cy="66" r="20" fill="#FFF6DC"/>
       <circle cx="66" cy="66" r="44" fill="none" stroke="#FFD9A8" stroke-width="2" opacity=".7"/></svg>`},
 
-  iceshard:{ w:126,h:126,spin:400,arc:34,dur:660,col:'#7FD8F2',
+  iceshard:{ w:152,h:152,spin:400,arc:34,dur:660,col:'#7FD8F2',
     svg:`<svg viewBox="0 0 126 126"><defs>
       <linearGradient id="is1" x1="0" y1="0" x2="0.3" y2="1">
       <stop offset="0%" stop-color="#FFFFFF"/><stop offset="42%" stop-color="#9CE6FA"/>
@@ -2220,7 +2223,7 @@ const PROJ = {
       <g stroke="#BEEEFF" stroke-width="2.5" stroke-linecap="round" opacity=".9">
         <path d="M92 46 L112 34M34 46 L14 34M63 120 L63 126"/></g></svg>`},
 
-  bolt:{ w:150,h:150,spin:0,arc:0,dur:520,col:'#D9B8FF',
+  bolt:{ w:182,h:182,spin:0,arc:0,dur:520,col:'#D9B8FF',
     svg:`<svg viewBox="0 0 150 150"><defs><linearGradient id="bl1" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color="#FFFFFF"/><stop offset="50%" stop-color="#E0CBFF"/><stop offset="100%" stop-color="#9B5BE0"/></linearGradient></defs>
       <ellipse cx="75" cy="75" rx="56" ry="30" fill="#9B5BE0" opacity=".2"/>
@@ -2229,7 +2232,7 @@ const PROJ = {
       <g stroke="#E0CBFF" stroke-width="2.5" stroke-linecap="round" opacity=".75" class="fx-flick">
         <path d="M28 40 L44 52M124 96 L108 86M34 110 L50 100"/></g></svg>`},
 
-  hex:{ w:136,h:136,spin:200,arc:0,dur:600,col:'#FF7C97',
+  hex:{ w:165,h:165,spin:200,arc:0,dur:600,col:'#FF7C97',
     svg:`<svg viewBox="0 0 136 136">
       <circle cx="68" cy="68" r="52" fill="#C4384B" opacity=".16"/>
       <circle cx="68" cy="68" r="46" fill="none" stroke="#FF7C97" stroke-width="4"/>
@@ -2239,7 +2242,7 @@ const PROJ = {
       <circle cx="68" cy="68" r="13" fill="#FF7C97" opacity=".6"/>
       <circle cx="68" cy="68" r="6" fill="#FFE6EB"/></svg>`},
 
-  orb:{ w:120,h:120,spin:0,arc:52,dur:640,col:'#C9CDDC',
+  orb:{ w:146,h:146,spin:0,arc:52,dur:640,col:'#C9CDDC',
     svg:`<svg viewBox="0 0 120 120"><defs><radialGradient id="ob1">
       <stop offset="0%" stop-color="#fff"/><stop offset="40%" stop-color="#DCE2F2"/>
       <stop offset="72%" stop-color="#98A2C0"/><stop offset="100%" stop-color="#98A2C0" stop-opacity="0"/></radialGradient></defs>
@@ -2247,7 +2250,7 @@ const PROJ = {
       <circle cx="60" cy="60" r="22" fill="#fff"/>
       <circle cx="60" cy="60" r="38" fill="none" stroke="#E8ECF8" stroke-width="2" opacity=".7"/></svg>`},
 
-  voidbeam:{ w:140,h:140,spin:0,arc:0,dur:600,col:'#B482F0',
+  voidbeam:{ w:170,h:170,spin:0,arc:0,dur:600,col:'#B482F0',
     svg:`<svg viewBox="0 0 140 140"><defs><radialGradient id="vb1">
       <stop offset="0%" stop-color="#F4EAFF"/><stop offset="38%" stop-color="#B482F0"/>
       <stop offset="76%" stop-color="#5A2A90"/><stop offset="100%" stop-color="#5A2A90" stop-opacity="0"/></radialGradient></defs>
@@ -2260,7 +2263,7 @@ const PROJ = {
 function trail(kind, from, to, dur, arc){
   if(RM()) return;
   const spec = PROJ[kind]; if(!spec) return;
-  const n = 20;
+  const n = perfLiteOn() ? 8 : 20;
   for(let i = 0; i < n; i++){
     const t = (i + 1) / (n + 1);
     const x = from.x + (to.x - from.x) * t;
@@ -2280,14 +2283,14 @@ function trail(kind, from, to, dur, arc){
 function impact(kind, at){
   const a = vfxHost(); if(!a) return;
   const P = {
-    fireball:{ col:'#FF8B3D', col2:'#FFE0B8', n:24, ring:'rgba(255,190,120,.95)', sz:190 },
-    iceshard:{ col:'#7FD8F2', col2:'#EAFBFF', n:22, ring:'rgba(190,238,255,.95)', sz:178 },
-    bolt:{ col:'#C9A6FF', col2:'#F2E6FF', n:20, ring:'rgba(200,170,255,.95)', sz:200 },
-    hex:{ col:'#FF7C97', col2:'#FFD6DE', n:16, ring:'rgba(255,150,175,.9)', sz:160 },
-    slash:{ col:'#FFD9E0', col2:'#fff', n:10, ring:'rgba(255,220,225,.85)', sz:100 },
-    orb:{ col:'#C9CDDC', col2:'#fff', n:10, ring:'rgba(220,225,240,.85)', sz:100 },
-    voidbeam:{ col:'#B482F0', col2:'#E4D2FF', n:20, ring:'rgba(180,130,240,.9)', sz:186 },
-  }[kind] || { col:'#FFD9E0', col2:'#fff', n:10, ring:'rgba(255,255,255,.8)', sz:100 };
+    fireball:{ col:'#FF8B3D', col2:'#FFE0B8', n:24, ring:'rgba(255,190,120,.95)', sz:228 },
+    iceshard:{ col:'#7FD8F2', col2:'#EAFBFF', n:22, ring:'rgba(190,238,255,.95)', sz:214 },
+    bolt:{ col:'#C9A6FF', col2:'#F2E6FF', n:20, ring:'rgba(200,170,255,.95)', sz:240 },
+    hex:{ col:'#FF7C97', col2:'#FFD6DE', n:16, ring:'rgba(255,150,175,.9)', sz:192 },
+    slash:{ col:'#FFD9E0', col2:'#fff', n:10, ring:'rgba(255,220,225,.85)', sz:120 },
+    orb:{ col:'#C9CDDC', col2:'#fff', n:10, ring:'rgba(220,225,240,.85)', sz:120 },
+    voidbeam:{ col:'#B482F0', col2:'#E4D2FF', n:20, ring:'rgba(180,130,240,.9)', sz:223 },
+  }[kind] || { col:'#FFD9E0', col2:'#fff', n:10, ring:'rgba(255,255,255,.8)', sz:120 };
 
   // 확산 링
   const r = spawnFX('vfx-ring', '', at.x, at.y, P.sz, P.sz, 152);
@@ -2299,15 +2302,17 @@ function impact(kind, at){
   if(f){ f.style.background = `radial-gradient(circle, ${P.col2}, ${P.col} 38%, transparent 68%)`;
     fxAnim(f, [{ opacity:.95, transform:'scale(.5)' }, { opacity:0, transform:'scale(1.25)' }], 320, 'ease-out').then(()=> f.remove()); }
   if(RM()) return;
-  // 파편
-  for(let i = 0; i < P.n; i++){
-    const ang = (Math.PI * 2 * i) / P.n + Math.random() * .5;
+  // 파편 — 이미 렉이 감지된 상태(perf-lite)면 절반만 뿌린다
+  const lite = perfLiteOn();
+  const pn = lite ? Math.ceil(P.n / 2) : P.n;
+  for(let i = 0; i < pn; i++){
+    const ang = (Math.PI * 2 * i) / pn + Math.random() * .5;
     const dist = 60 + Math.random() * 112;
     const sz = 6 + Math.random() * 12;
     const d = spawnFX('vfx-dot', '', at.x, at.y, sz, sz, 153);
     if(!d) continue;
     const c = Math.random() > .5 ? P.col : P.col2;
-    d.style.background = c; d.style.boxShadow = `0 0 ${sz*2.6}px ${c}`;
+    d.style.background = c; if(!lite) d.style.boxShadow = `0 0 ${sz*2.6}px ${c}`;
     fxAnim(d, [{ transform:'translate(0,0) scale(1)', opacity:1 },
       { transform:`translate(${Math.cos(ang)*dist}px,${Math.sin(ang)*dist + 40}px) scale(.15)`, opacity:0 }],
       620 + Math.random()*380, 'cubic-bezier(.2,.7,.3,1)').then(()=> d.remove());
@@ -2320,8 +2325,8 @@ async function charge(kind, at){
   const spec = PROJ[kind]; if(!spec || RM()) return;
   const c = spawnFX('vfx-charge', spec.svg, at.x + 34, at.y - 6, spec.w, spec.h, 149);
   if(!c) return;
-  // 모여드는 입자
-  for(let i = 0; i < 9; i++){
+  // 모여드는 입자 — 이미 렉이 감지된 상태면 절반만
+  for(let i = 0; i < (perfLiteOn() ? 4 : 9); i++){
     const ang = Math.random() * Math.PI * 2, dist = 60 + Math.random() * 60;
     const sz = 5 + Math.random() * 8;
     const d = spawnFX('vfx-dot', '', at.x + 34 + Math.cos(ang)*dist, at.y - 6 + Math.sin(ang)*dist, sz, sz, 148);
@@ -2994,13 +2999,23 @@ async function onPlayerDead(){
 /* ═══════════════════════════════════════════════════════════
    15. 보상
    ═══════════════════════════════════════════════════════════ */
+// 이미 갖고 있는 각인(짝을 채우면 합성 재료가 되는)이면 절반 확률로 그걸 다시 제안한다.
+// 없으면(처음 보는 각인 풀) 그냥 무작위 — 완전 새 덱을 순수 랜덤으로 억지로 채우지 않는다.
+// 이게 없으면 한 판(보상 기회 ~4번)에 같은 원소 각인이 4장 모일 확률이 거의 0이라
+// 합성 3단계를 시작덱 강타/수비 말고는 볼 수가 없었다.
+function ownsFamily(baseId){ return G.deck.includes(baseId) || G.deck.includes(baseId + '@2'); }
+function pickRewardCard(r, pool, taken){
+  const avail = pool.filter(x => !taken.includes(x));
+  const dup = avail.filter(ownsFamily);
+  return (dup.length && r() < 0.5) ? pickR(r, dup) : pickR(r, avail);
+}
 function rollRewardCards(fightNo){
   // 매 보상마다 불/서리 각 최소 1장 보장 → 속성 선택이 항상 가능
   const r = RNG.reward(fightNo);
-  const f = pickR(r, CARD_POOL_FIRE);
-  const i = pickR(r, CARD_POOL_ICE);
-  const rest = CARD_POOL_FIRE.concat(CARD_POOL_ICE, CARD_POOL_NEU).filter(x => x !== f && x !== i);
-  const third = pickR(r, rest);
+  const f = pickRewardCard(r, CARD_POOL_FIRE, []);
+  const i = pickRewardCard(r, CARD_POOL_ICE, [f]);
+  const rest = CARD_POOL_FIRE.concat(CARD_POOL_ICE, CARD_POOL_NEU);
+  const third = pickRewardCard(r, rest, [f, i]);
   return shuffleWith(r, [f, i, third]);
 }
 let rewardOpenedAt = 0;
@@ -3081,6 +3096,7 @@ function renderShop(){
    17. 덱 보기 / 제거
    ═══════════════════════════════════════════════════════════ */
 let removeMode = false, removeAfter = null, removeCtx = null;
+let fuseHintShown = false; // 합성 가능한 짝이 처음 생겼을 때 한 번만 안내
 function renderDeckList(){
   clearFuseSelection();
   const fusable = fusableSet(G.deck);
@@ -3091,6 +3107,10 @@ function renderDeckList(){
     if(byName !== 0) return byName;
     return parseCid(a).tier - parseCid(b).tier;
   });
+  if(!removeMode && !fuseHintShown && fusable.size){
+    fuseHintShown = true;
+    toast('금색으로 빛나는 각인이 있다 — 같은 것을 두 번 클릭하면 상위 등급으로 합성된다');
+  }
   $('#dv-desc').textContent = removeMode ? '한 장이 영구히 사라집니다.' : `${G.deck.length}장`;
   $('#dv-list').innerHTML = sorted.map(id => {
     const cls = [removeMode ? 'rm' : '', !removeMode && fusable.has(id) ? 'fusable' : ''].filter(Boolean).join(' ');
@@ -3105,9 +3125,14 @@ function openDeck(forRemove, after, ctx){
   ov('ov-deck', true);
 }
 
-/* ── 카드 합성: 덱 보기에서 같은 카드를 클릭해 고르고, 짝을 클릭하면 합쳐진다 ──
-   (드래그 방식은 카드가 부채꼴로 겹쳐 있는 레이아웃 + 카드 안의 <img> 때문에
-   드롭 판정이 자꾸 어긋나서, 좌표 계산이 필요 없는 클릭 선택 방식으로 바꿨다) */
+/* ── 카드 합성: 덱 보기에서 같은 카드끼리 합친다 ──
+   두 가지 방식을 다 받는다:
+   1) 클릭 선택: 하나를 고르면 살짝 들리고, 짝을 클릭하면 합성된다.
+   2) 드래그: 하나를 짝 위로 끌어다 놓으면 바로 합성된다.
+   (예전엔 드래그만 있었는데 카드가 겹쳐 있는 레이아웃 탓에 elementFromPoint 하나로는
+   드롭 판정이 자꾸 어긋나서 클릭 방식으로 바꿨던 적이 있다. 지금은 elementsFromPoint로
+   그 지점에 쌓인 모든 카드를 훑어 짝을 찾기 때문에 겹쳐도 정확하다 — 그래서 드래그를
+   다시 얹어도 안전하다. 클릭 방식은 그대로 남겨 어느 쪽이 편해도 되게 했다.) */
 let fusing = false, fuseSelId = null, fuseSelEl = null;
 function removeOneFromDeck(id){
   const idx = G.deck.indexOf(id);
@@ -3116,6 +3141,53 @@ function removeOneFromDeck(id){
 function clearFuseSelection(){
   if(fuseSelEl) fuseSelEl.classList.remove('fsel');
   fuseSelEl = null; fuseSelId = null;
+}
+let fuseDrag = null, fuseDragSuppress = 0;
+function fuseDragStart(el, ev){
+  if(removeMode || fusing) return;
+  // 픽셀 몇 개짜리 임계값 대신 "원래 카드 영역을 실제로 벗어났는가"로 드래그 여부를
+  // 판정한다 — 클릭 후 손이 살짝 떨리는 정도(클릭 유지)로는 절대 드래그로 안 잡히고,
+  // 진짜로 다른 카드 쪽으로 끌고 가야만 드래그로 인식된다.
+  fuseDrag = { el, id: el.dataset.card, rect: el.getBoundingClientRect(), moved:false, target:null };
+  el.setPointerCapture && el.setPointerCapture(ev.pointerId);
+}
+function fuseDragMove(ev){
+  if(!fuseDrag) return;
+  if(!fuseDrag.moved){
+    const r = fuseDrag.rect;
+    const stillInside = ev.clientX >= r.left && ev.clientX <= r.right &&
+                         ev.clientY >= r.top  && ev.clientY <= r.bottom;
+    if(stillInside) return; // 그냥 누르고 있는 중 — 클릭 선택 흐름을 건드리지 않는다
+    fuseDrag.moved = true;
+    fuseDrag.el.classList.add('fdragging');
+    // 주의: 여기서 clearFuseSelection()을 부르면 안 된다 — 다른 카드를 이미 클릭으로
+    // 선택해둔 상태에서 두 번째 카드를 누르는 손짓이 아주 살짝만 흔들려도 드래그로
+    // 오인되어 첫 번째 선택이 날아가 버리는 버그가 실제로 있었다.
+  }
+  // 겹친 카드들 중에서(맨 위부터) 같은 id를 가진 다른 카드를 찾는다 — 덱 보기는
+  // 카드가 음수 마진으로 서로 겹치므로 elementFromPoint 하나만 믿으면 안 된다.
+  let target = null;
+  for(const node of document.elementsFromPoint(ev.clientX, ev.clientY)){
+    if(fuseDrag.el.contains(node)) continue;
+    const card = node.closest && node.closest('.card.fusable');
+    if(card && card.dataset.card === fuseDrag.id){ target = card; break; }
+  }
+  if(fuseDrag.target !== target){
+    if(fuseDrag.target) fuseDrag.target.classList.remove('fdrop');
+    if(target) target.classList.add('fdrop');
+    fuseDrag.target = target;
+  }
+}
+async function fuseDragEnd(){
+  if(!fuseDrag) return;
+  const d = fuseDrag; fuseDrag = null;
+  if(!d.moved) return; // 그냥 탭이었다면 뒤따르는 click 이벤트가 기존 선택 방식으로 처리한다
+  fuseDragSuppress = Date.now();
+  d.el.classList.remove('fdragging');
+  if(d.target){
+    d.target.classList.remove('fdrop');
+    await fuseCards(d.id, d.el, d.target);
+  }
 }
 async function handleFuseClick(el){
   if(removeMode || fusing) return;
@@ -3254,11 +3326,45 @@ async function fuseCards(id, elA, elB){
   renderTopHUD();
 }
 const dvListEl = $('#dv-list');
+// 진짜 원인: 하나를 고르면(.fsel) 그 카드가 translateY(-14px)+scale(.86)로 커지고 들려서,
+// 원래 자기 칸을 넘어 옆 카드와의 여백(원래는 비어 있던 자리)까지 뒤덮는다. 그래서 짝
+// 카드를 누른 자리가 사실은 카드 위가 아니라 "선택된 카드가 새로 침범한 빈 여백"이라
+// 클릭이 짝 카드 자신에게조차 닿지 못하고 선택된 카드 자신에게 떨어져 — 합성 대신
+// "다시 누르면 선택 취소"로 빠졌다. 그 지점 자체엔 짝 카드가 없으니 elementsFromPoint로
+// 쌓인 요소를 훑어봐도 못 찾는다 — 대신 클릭 지점에서 가장 가까운 짝(같은 id) 카드를
+// 찾아, 그 카드 몸통 크기 정도 거리 안이면 "그걸 노린 것"으로 보정한다.
+function nearestFusePair(clientX, clientY, excludeEl, id){
+  let best = null, bestD = Infinity, bestR = null;
+  for(const c of dvListEl.querySelectorAll('.card.fusable')){
+    if(c === excludeEl || c.dataset.card !== id) continue;
+    const r = c.getBoundingClientRect();
+    const d = Math.hypot(clientX - (r.left + r.width/2), clientY - (r.top + r.height/2));
+    if(d < bestD){ bestD = d; best = c; bestR = r; }
+  }
+  return (best && bestD < Math.max(bestR.width, bestR.height) * 0.75) ? best : null;
+}
 dvListEl.addEventListener('click', e => {
-  const el = e.target.closest('.card.fusable');
+  if(Date.now() - fuseDragSuppress < 300) return; // 방금 드래그로 처리됨
+  let el = e.target.closest('.card.fusable');
+  if(fuseSelEl && el === fuseSelEl){
+    const pair = nearestFusePair(e.clientX, e.clientY, fuseSelEl, fuseSelId);
+    if(pair) el = pair;
+  }
   if(!el) return;
   handleFuseClick(el);
 });
+// 주의: pointerdown(드래그 시작)에서는 이 보정을 하지 않는다 — 여기서 포인터를
+// 실제로 누른 곳과 다른 카드에 setPointerCapture를 걸면, 뒤따르는 click 이벤트의
+// target이 브라우저마다 엉뚱하게(.card 밖으로) 풀려버려 오히려 클릭 경로를 깨뜨린다.
+// 클릭 보정은 위 click 핸들러만으로 충분하다 — 드래그는 실제로 끌어야만 의미가 있다.
+dvListEl.addEventListener('pointerdown', e => {
+  const el = e.target.closest('.card.fusable');
+  if(!el) return;
+  fuseDragStart(el, e);
+});
+window.addEventListener('pointermove', e => { if(fuseDrag) fuseDragMove(e); }, { passive:true });
+window.addEventListener('pointerup', e => { if(fuseDrag) fuseDragEnd(e); });
+window.addEventListener('pointercancel', e => { if(fuseDrag) fuseDragEnd(e); });
 function openPile(which){
   if(!C) return;
   const arr = which === 'draw' ? C.draw : C.discard;
@@ -3506,10 +3612,19 @@ document.addEventListener('mouseover', e => {
     showTip(`<h5>${po.dataset.tipname}</h5>${po.dataset.tipdesc}<br><span style="color:#8E93A6">클릭해 사용</span>`, r.left + r.width/2, r.top);
     return;
   }
+  const t2 = e.target.closest('[data-tip2]');
+  if(t2){
+    const bar = t2.dataset.tip2.indexOf('|');
+    const n = bar < 0 ? t2.dataset.tip2 : t2.dataset.tip2.slice(0, bar);
+    const d = bar < 0 ? '' : t2.dataset.tip2.slice(bar + 1);
+    const r = t2.getBoundingClientRect();
+    showTip(`<h5>${n}</h5>${d}`, r.left + r.width/2, r.top);
+    return;
+  }
   hideTip();
 });
 document.addEventListener('mouseout', e => {
-  if(e.target.closest && (e.target.closest('[data-st]') || e.target.closest('[data-tipname]'))) hideTip();
+  if(e.target.closest && (e.target.closest('[data-st]') || e.target.closest('[data-tipname]') || e.target.closest('[data-tip2]'))) hideTip();
 });
 window.addEventListener('scroll', hideTip, true);
 
