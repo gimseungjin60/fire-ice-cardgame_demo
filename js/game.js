@@ -627,7 +627,11 @@ function applyScene(key){
     const bgEl = $('#bgphoto');
     if(bgEl){
       bgEl.classList.toggle('on', !!bgImg);
-      bgEl.innerHTML = bgImg ? `<img src="${bgImg}" alt="">` : '';
+      // 화면비가 안 맞을 때도 사진을 자르지 않는다 — 같은 사진을 흐리게 확대해
+      // 여백을 채우고(bg-fill), 그 위에 원본 전체를 contain으로 얹는다(bg-main).
+      bgEl.innerHTML = bgImg
+        ? `<img class="bg-fill" src="${bgImg}" alt="" aria-hidden="true"><img class="bg-main" src="${bgImg}" alt="">`
+        : '';
     }
     $('#far').innerHTML   = bgImg ? '' : (FAR[s.far]   || '');
     $('#mid').innerHTML   = bgImg ? '' : (MID[s.mid]   || '');
@@ -1665,7 +1669,15 @@ const NODE_LABEL= { battle:'전투', elite:'정예', rest:'야영지', shop:'세
    ═══════════════════════════════════════════════════════════ */
 let G = null;   // 런 상태
 let C = null;   // 전투 상태
-let busy = false;
+let busy=false; // 대입은 항상 setBusy()를 통해서만 — 아래에서 일괄 치환된다
+// 카드 재생/턴 종료 등 애니메이션이 끝날 때까지 입력을 막는 동안(busy=true), 지금까지는
+// 화면에 아무 표시가 없어 클릭이 조용히 무시됐다 — 사용자에게는 "전투가 렉 걸린 것처럼
+// 반응이 없다"로 보인다. busy를 쓰는 모든 곳을 이 함수 하나로 모아, 꺼져 있는 동안엔
+// 턴 종료 버튼과 손패에 즉시 "지금은 안 됨" 표시를 준다.
+function setBusy(v){
+  busy = v;
+  document.body.classList.toggle('busy-lock', v);
+}
 let t0 = 0;
 let timerId = null;
 const SID = (()=>{ const s='ACDEFHJKLMNPRTUVWXY3479'; let o=''; for(let i=0;i<4;i++) o += s[Math.floor(Math.random()*s.length)]; return o; })();
@@ -1859,6 +1871,8 @@ function renderTopHUD(){
   if(gold) gold.textContent = G.gold;
   if(fl) fl.textContent = `${Math.min(G.layer + 1, MAP_LAYERS.length)}/${MAP_LAYERS.length}`;
   if(dn) dn.textContent = G.deck.length;
+  const deckBtn = $('#tb-deck');
+  if(deckBtn) deckBtn.classList.toggle('has-fuse', fusableSet(G.deck).size > 0);
   renderPotions();
 }
 
@@ -1879,6 +1893,7 @@ function updateQA(){
 function startCombat(enemyId, nodeName, isElite, isBoss){
   const E = ENEMIES[enemyId];
   G.fights++;
+  handFuseMode = false; handFuseSelI = null;
   C = {
     id:enemyId, name:nodeName, elite:!!isElite, boss:!!isBoss,
     turn:0, energy:3, maxEnergy:3,
@@ -1919,8 +1934,8 @@ function startCombat(enemyId, nodeName, isElite, isBoss){
   setIntent();
   renderIntent();
   banner(E.n, isBoss ? '회랑의 끝' : (isElite ? '정예' : `전투 ${G.fights}`), 'turn');
-  busy = true;
-  setTimeout(()=>{ busy = false; startPlayerTurn(true); }, 700);
+  setBusy(true);
+  setTimeout(()=>{ setBusy(false); startPlayerTurn(true); }, 700);
 }
 
 /* ── 의도 ── */
@@ -1943,7 +1958,7 @@ function clampIntentToViewport(){
   el.style.transform = '';
   if(!el.innerHTML) return;
   const topbar = $('#topbar');
-  const minTop = (topbar ? topbar.getBoundingClientRect().bottom : 0) + 20;
+  const minTop = (topbar ? topbar.getBoundingClientRect().bottom : 0) + 28;
   const r = el.getBoundingClientRect();
   if(r.top < minTop) el.style.transform = `translateY(${Math.round(minTop - r.top)}px)`;
 }
@@ -1961,10 +1976,11 @@ function renderIntentInner(){
   const a = C.e.act;
   if(C.e.frozen){
     el.className = 'intent';
+    el.title = '빙결 상태라 이번 턴엔 아무것도 하지 못합니다.';
     el.innerHTML = `<span style="color:#BEEEFF">${ico('snow')}</span><span class="nm" style="border:none;padding-left:0;color:#BEEEFF">빙결 — 행동 불가</span>`;
     return;
   }
-  let cls = 'intent', html = '';
+  let cls = 'intent', html = '', tip = '';
   if(a.atk !== undefined || a.multi){
     cls += ' atk';
     if(a.big) cls += ' big';
@@ -1972,20 +1988,25 @@ function renderIntentInner(){
     const cnt  = a.multi ? a.multi[1] : 1;
     const v = enemyAtkVal(base);
     html += `<span style="color:#FF7C97">${ico('sword')}</span><b>${v}</b>` + (cnt>1 ? `<span class="x">×${cnt}</span>` : '');
+    tip += `막지 않으면 ${v}${cnt>1?` ×${cnt}회`:''}의 피해를 받습니다. `;
   }
   if(a.blk !== undefined){
     html += `<span style="color:#9CC4E8">${ico('shield')}</span><b>${a.blk}</b>`;
+    tip += `방어막 ${a.blk}을 두릅니다. `;
   }
   if(a.str !== undefined){
     html += `<span style="color:#F2CE7C">${ico('up')}</span>`;
+    tip += `힘을 올립니다. `;
   }
   if(a.deb){
     html += `<span style="color:#B79BE0">${ico('down')}</span>`;
+    tip += `약화 효과를 겁니다. `;
   }
   html += `<span class="nm">${esc(a.l)}</span>`;
   const changed = el.dataset.sig !== cls + html;
   el.className = cls;
   el.innerHTML = html;
+  el.title = `적의 다음 행동: ${a.l}. ${tip}`.trim();
   el.dataset.sig = cls + html;
   if(changed && !RM()){
     el.animate([{ transform:'scale(.62) translateY(-10px)', opacity:0 },
@@ -2070,10 +2091,13 @@ function renderPotions(){
 function renderHand(){
   const host = $('#hand');
   const n = C.hand.length;
+  const fusableHand = handFuseMode ? fusableSet(C.hand) : null;
   host.innerHTML = C.hand.map((id, i) => {
     const c = cardDef(id);
     const ok = C.energy >= c.c;
-    return cardHTML(id, { cls:`inhand ${ok?'playable':'locked'}`, attrs:`data-i="${i}" style="z-index:${10+i}"` });
+    const fuseCls = fusableHand && fusableHand.has(id) ? 'fusable' : '';
+    const selCls = handFuseSelI === i ? 'fsel' : '';
+    return cardHTML(id, { cls:`inhand ${ok?'playable':'locked'} ${fuseCls} ${selCls}`.trim(), attrs:`data-i="${i}" style="z-index:${10+i}"` });
   }).join('');
   // 부채꼴 배치
   const cards = $$('.card', host);
@@ -2720,7 +2744,7 @@ async function playCard(i){
     return;
   }
 
-  busy = true;
+  setBusy(true);
   const node = $(`#hand .card[data-i="${i}"]`);
   if(node){
     node.classList.remove('playable');
@@ -2758,7 +2782,7 @@ async function playCard(i){
     await c.use(tier);
   } catch(err){ console.error('card error', id, err); }
 
-  busy = false;
+  setBusy(false);
   if(C && !C.over){ renderHand(); renderIntent(); }
   updateQA();
 }
@@ -2814,7 +2838,7 @@ async function startPlayerTurn(first){
 
 async function endTurn(){
   if(busy || !C || C.over) return;
-  busy = true;
+  setBusy(true);
   const etb = $('#end-turn');
   etb.classList.remove('ready'); etb.disabled = true;
 
@@ -2850,10 +2874,10 @@ async function endTurn(){
   }
 
   if(C && !C.over){
-    busy = false;
+    setBusy(false);
     await startPlayerTurn(false);
   } else {
-    busy = false;
+    setBusy(false);
   }
 }
 
@@ -2960,7 +2984,7 @@ async function hitPlayer(raw, isBig){
 async function onEnemyDead(){
   if(!C || C.over) return;
   C.over = true;
-  busy = true;
+  setBusy(true);
   drag = null; hideAim(); setReticle(false);
   $('#arena').classList.remove('foe');
   $('#phase').innerHTML = '';
@@ -2978,7 +3002,7 @@ async function onEnemyDead(){
   banner('승리', `${C.turn}턴`, 'turn');
   await wait(900);
   C = null;
-  busy = false;
+  setBusy(false);
   updateQA();
 
   if(wasBoss){ endRun(true); return; }
@@ -3003,7 +3027,7 @@ async function onEnemyDead(){
 async function onPlayerDead(){
   if(!C || C.over) return;
   C.over = true;
-  busy = true;
+  setBusy(true);
   log('FIGHT_LOSE', `전투${C.fightNo} T${C.turn}`);
   G.stats.fightLog.push({
     no:C.fightNo, e:ENEMIES[C.id].n, turns:C.turn,
@@ -3014,7 +3038,7 @@ async function onPlayerDead(){
   applyScene('lose');
   banner('소멸', '각인이 흩어졌다', 'turn');
   await wait(1500);
-  C = null; busy = false;
+  C = null; setBusy(false);
   endRun(false);
 }
 
@@ -3131,7 +3155,7 @@ function renderDeckList(){
   });
   if(!removeMode && !fuseHintShown && fusable.size){
     fuseHintShown = true;
-    toast('금색으로 빛나는 각인이 있다 — 같은 것을 두 번 클릭하면 상위 등급으로 합성된다');
+    toast('금색으로 빛나는 각인이 있다 — 같은 것끼리 두 번 클릭하거나, 하나를 눌러 짝 위로 끌어다 놓으면 상위 등급으로 합성된다');
   }
   $('#dv-desc').textContent = removeMode ? '한 장이 영구히 사라집니다.' : `${G.deck.length}장`;
   $('#dv-list').innerHTML = sorted.map(id => {
@@ -3286,10 +3310,14 @@ function fuseSparks(x, y){
     setTimeout(()=> s.remove(), 760);
   }
 }
-async function playFuseFX(elA, elB, newId){
+// opts.dest: 카드가 모여드는 목표 지점(없으면 덱 오버레이 중앙). opts.shakeEl: 충돌 순간
+// 흔들 요소(없으면 덱 오버레이) — 손패 합성처럼 다른 곳에서 재사용하기 위해 받는다.
+async function playFuseFX(elA, elB, newId, opts){
+  opts = opts || {};
   const rA = elA.getBoundingClientRect(), rB = elB.getBoundingClientRect();
-  const ovRect = $('#ov-deck').getBoundingClientRect();
-  const cx = ovRect.left + ovRect.width / 2, cy = ovRect.top + ovRect.height / 2;
+  let cx, cy;
+  if(opts.dest){ cx = opts.dest.x; cy = opts.dest.y; }
+  else { const ovRect = $('#ov-deck').getBoundingClientRect(); cx = ovRect.left + ovRect.width / 2; cy = ovRect.top + ovRect.height / 2; }
   const cloneA = cloneCardAt(elA), cloneB = cloneCardAt(elB);
   elA.style.visibility = 'hidden'; elB.style.visibility = 'hidden';
   const dxA = cx - (rA.left + rA.width / 2), dyA = cy - (rA.top + rA.height / 2);
@@ -3313,7 +3341,7 @@ async function playFuseFX(elA, elB, newId){
   fuseFlash(cx, cy);
   fuseRing(cx, cy);
   fuseSparks(cx, cy);
-  pulseClass($('#ov-deck'), 'fuse-shake', 340);
+  pulseClass('shakeEl' in opts ? opts.shakeEl : $('#ov-deck'), 'fuse-shake', 340);
   SFX.play('reward');
 
   const host = document.createElement('div');
@@ -3347,6 +3375,66 @@ async function fuseCards(id, elA, elB){
   renderDeckList();
   renderTopHUD();
 }
+
+/* ── 전투 중 손패 합성 ──
+   덱 화면 합성은 G.deck(영구 소장)만 바꿔서, 전투 중에 눌러도 지금 들고 있는
+   C.hand에는 반영되지 않는다 — "지금 손에 든 두 장을 당장 합치고 싶다"는
+   요청은 이 방식으로는 채워지지 않는다. 그래서 손패 전용 합성 모드를 따로 둔다:
+   버튼으로 모드를 켠 뒤 같은 각인 두 장을 손패에서 직접 고르면, C.hand에서
+   즉시 두 장을 빼고 상위 등급 한 장을 넣는다. 이후 전투에도 남도록 G.deck도
+   똑같이 갱신한다(손에 있던 카드는 원래 덱에서 나온 것이므로). */
+let handFuseMode = false, handFuseSelI = null;
+function setHandFuseMode(v){
+  handFuseMode = v; handFuseSelI = null;
+  const btn = $('#hand-fuse-toggle');
+  if(btn) btn.classList.toggle('on', v);
+  $('#hand').classList.toggle('fuse-mode', v);
+  if(C) renderHand();
+}
+async function fuseHandCards(iA, iB, id){
+  if(fusing) return;
+  fusing = true;
+  const elA = $(`#hand .card[data-i="${iA}"]`), elB = $(`#hand .card[data-i="${iB}"]`);
+  const { base, tier } = parseCid(id);
+  const newId = makeCid(base, tier + 1);
+  const [hi, lo] = iA > iB ? [iA, iB] : [iB, iA];
+  C.hand.splice(hi, 1); C.hand.splice(lo, 1);
+  C.hand.push(newId);
+  removeOneFromDeck(id); removeOneFromDeck(id);
+  G.deck.push(newId);
+  G.stats.cardsFused = (G.stats.cardsFused || 0) + 1;
+  log('CARD_FUSE', `${cardLabel(id)} ×2 → ${cardLabel(newId)} (전투 중)`);
+  try {
+    if(elA && elB){
+      const rA = elA.getBoundingClientRect(), rB = elB.getBoundingClientRect();
+      const dest = { x:(rA.left + rA.width/2 + rB.left + rB.width/2)/2, y:Math.min(rA.top, rB.top) - 30 };
+      await playFuseFX(elA, elB, newId, { dest, shakeEl: $('.hand-zone') });
+    }
+  } catch(err){ console.error('hand fuse fx error', err); }
+  fusing = false;
+  setHandFuseMode(false);
+  if(C && !C.over) renderHand();
+  renderTopHUD();
+}
+function handleHandFuseClick(i){
+  if(!C || C.over || busy || fusing) return;
+  const id = C.hand[i];
+  if(!id) return;
+  if(handFuseSelI === i){ handFuseSelI = null; renderHand(); return; }
+  if(handFuseSelI != null && C.hand[handFuseSelI] === id){
+    const a = handFuseSelI;
+    fuseHandCards(a, i, id);
+    return;
+  }
+  handFuseSelI = i;
+  renderHand();
+  SFX.play('ui');
+}
+$('#hand-fuse-toggle').addEventListener('click', () => {
+  if(!C || C.over || busy) return;
+  setHandFuseMode(!handFuseMode);
+});
+
 const dvListEl = $('#dv-list');
 // 진짜 원인: 하나를 고르면(.fsel) 그 카드가 translateY(-14px)+scale(.86)로 커지고 들려서,
 // 원래 자기 칸을 넘어 옆 카드와의 여백(원래는 비어 있던 자리)까지 뒤덮는다. 그래서 짝
@@ -3956,6 +4044,7 @@ const handEl = $('#hand');
 handEl.addEventListener('pointerdown', e => {
   const c = e.target.closest('.card');
   if(!c || e.button > 0) return;
+  if(handFuseMode) return; // 합성 모드에서는 끌어서 사용하지 않고 클릭으로 고른다
   e.preventDefault();
   beginDrag(c, e);
 });
@@ -3967,6 +4056,11 @@ handEl.addEventListener('click', e => {
   if(Date.now() - suppressClick < 500) return;
   const c = e.target.closest('.card');
   if(!c || drag) return;
+  if(handFuseMode){
+    const fEl = e.target.closest('.card.fusable');
+    if(fEl) handleHandFuseClick(parseInt(fEl.dataset.i, 10));
+    return;
+  }
   playCard(parseInt(c.dataset.i, 10));
 });
 
@@ -3995,7 +4089,7 @@ $('#potions').addEventListener('click', async e => {
   const i = parseInt(p.dataset.potion, 10);
   const pid = G.potions[i];
   if(!pid) return;
-  busy = true;
+  setBusy(true);
   hideTip();
   G.potions[i] = null;
   G.stats.potionsUsed++;
@@ -4009,7 +4103,7 @@ $('#potions').addEventListener('click', async e => {
     else await fire(pid === 'p_fire' ? 'fireball' : 'iceshard', heroRect(), enemyRect());
     await POTIONS[pid].use();
   } catch(err){ console.error(err); }
-  busy = false;
+  setBusy(false);
   if(C && !C.over) renderHand();
 });
 

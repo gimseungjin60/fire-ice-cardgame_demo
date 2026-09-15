@@ -313,14 +313,31 @@ button:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--gold); o
 
 /* 의도 말풍선 */
 .intent{
+  position:relative;
   display:flex; align-items:center; gap:9px; padding:8px 15px; border-radius:99px;
   background:rgba(14,17,26,.93); border:1px solid var(--edge);
   box-shadow:0 5px 20px rgba(0,0,0,.5); min-height:38px;
   transition:border-color .25s, box-shadow .25s;
 }
+/* "적 위에 뜬 숫자"가 뭘 뜻하는지 한눈에 안 들어온다는 피드백 — 말풍선 위에
+   "다음 행동" 이름표를 항상 붙여, 숫자가 곧 다음 턴에 받을 피해량임을 명확히 한다. */
+.intent::before{
+  content:'다음 행동'; position:absolute; left:50%; top:-8px; transform:translateX(-50%);
+  font-size:9.5px; font-weight:700; letter-spacing:.14em; color:#8A90A8; white-space:nowrap;
+  background:#0E1119; padding:1.5px 8px; border-radius:5px; border:1px solid rgba(255,255,255,.1);
+}
+.intent.atk::before{ content:'다음 공격'; color:#F0AAB6; border-color:rgba(196,56,75,.4); }
 .intent.atk{ border-color:rgba(196,56,75,.5); box-shadow:0 5px 20px rgba(0,0,0,.5), 0 0 20px rgba(196,56,75,.16); }
-.intent.big{ border-color:var(--ember); box-shadow:0 5px 22px rgba(0,0,0,.5), 0 0 28px rgba(240,86,45,.4); animation:bigThreat 1.5s ease-in-out infinite; }
-@keyframes bigThreat{ 0%,100%{ box-shadow:0 5px 22px rgba(0,0,0,.5), 0 0 20px rgba(240,86,45,.3);} 50%{ box-shadow:0 5px 22px rgba(0,0,0,.5), 0 0 40px rgba(240,86,45,.6);} }
+.intent.big{ border-color:var(--ember); box-shadow:0 5px 22px rgba(0,0,0,.5), 0 0 20px rgba(240,86,45,.3); }
+/* box-shadow의 번짐 반경을 매 프레임 바꾸면 매번 다시 칠해야 해서 무겁다 —
+   대신 밝기(opacity)만 바뀌는 후광용 ::after 하나를 얹어 합성만으로 처리한다. */
+.intent.big::after{
+  content:''; position:absolute; inset:-8px; z-index:-1; border-radius:inherit;
+  box-shadow:0 0 40px rgba(240,86,45,.65); opacity:0; pointer-events:none;
+  animation:bigThreatGlow 1.5s ease-in-out infinite;
+}
+@keyframes bigThreatGlow{ 0%,100%{ opacity:0; } 50%{ opacity:1; } }
+.perf-lite .intent.big::after{ animation:none !important; opacity:.5; }
 .intent svg{ width:19px; height:19px; }
 .intent b{ font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
 .intent .x{ font-size:11.5px; color:var(--muted); margin-left:-4px; }
@@ -475,8 +492,22 @@ button:focus-visible, [tabindex]:focus-visible{ outline:2px solid var(--gold); o
 
 .combat-bar .spacer{ flex:1; }
 #end-turn{ padding:14px 30px; }
-#end-turn.ready{ animation:etGlow 2.6s ease-in-out infinite; }
-@keyframes etGlow{ 0%,100%{ box-shadow:0 5px 22px rgba(240,86,45,.3), inset 0 1px 0 rgba(255,255,255,.28);} 50%{ box-shadow:0 5px 30px rgba(240,86,45,.62), inset 0 1px 0 rgba(255,255,255,.28);} }
+/* box-shadow 자체를 매 프레임 흔들면 계속 다시 칠해야 해서 무겁다 — 대신
+   밝기(opacity)만 바뀌는 후광 ::after 하나로 같은 효과를 합성만으로 낸다.
+   내 턴 내내(길게는 수십 초) 켜져 있는 애니메이션이라 여기가 체감 렉의 큰 축이었다. */
+#end-turn.ready::after{
+  content:''; position:absolute; inset:-6px; z-index:-1; border-radius:inherit;
+  box-shadow:0 5px 30px rgba(240,86,45,.62); opacity:0; pointer-events:none;
+  animation:etGlowOp 2.6s ease-in-out infinite;
+}
+@keyframes etGlowOp{ 0%,100%{ opacity:0; } 50%{ opacity:1; } }
+.perf-lite #end-turn.ready::after{ animation:none !important; opacity:.5; }
+
+/* busy(카드 재생/턴 종료 처리 중) 동안엔 클릭이 조용히 무시됐다 — 반응이 없어
+   보여서 "렉"으로 느껴지는 원인 중 하나였다. 지금 눌러도 안 된다는 걸 즉시 보여준다. */
+body.busy-lock #end-turn{ opacity:.5; cursor:not-allowed; pointer-events:none; }
+body.busy-lock #hand{ cursor:wait; }
+body.busy-lock #hand .card{ pointer-events:none; }
 
 /* 플로팅 숫자 */
 .float{
@@ -681,11 +712,17 @@ html,body{ background:#05060A; }
 @keyframes breathGlow{ 0%,100%{opacity:.78} 50%{opacity:.94} }
 
 /* 적/장소별 실사 배경 사진 — 있을 때만 켜지고(JS가 .on 토글), 원경/중경/근경
-   실루엣을 대신한다. 안개·빛기둥·천장·액자 등 장식 레이어는 이 위에 그대로 얹힌다. */
-#bgphoto{ opacity:0; }
+   실루엣을 대신한다. 안개·빛기둥·천장·액자 등 장식 레이어는 이 위에 그대로 얹힌다.
+   원본 이미지를 절대 잘라내지 않는다: 화면비가 안 맞아 남는 여백은 같은 사진을
+   흐리게 확대해 채우고(.bg-fill), 그 위에 원본 전체를 object-fit:contain으로 얹는다
+   (.bg-main) — 사진의 어느 부분도 크롭되어 사라지지 않는다. */
+#bgphoto{ opacity:0; inset:0; overflow:hidden; }
 #bgphoto.on{ opacity:1; }
-#bgphoto img{ position:absolute; inset:0; width:100%; height:100%;
-  object-fit:cover; object-position:center 55%; display:block; }
+#bgphoto .bg-fill{ position:absolute; inset:-4%; width:108%; height:108%;
+  object-fit:cover; filter:blur(46px) brightness(.5) saturate(1.2); display:block; }
+#bgphoto .bg-main{ position:absolute; inset:0; width:100%; height:100%;
+  object-fit:contain; display:block;
+  filter:drop-shadow(0 20px 60px rgba(0,0,0,.55)); }
 
 /* 대기 원근: 멀수록 밝고 흐리게, 가까울수록 새까맣게 */
 #far{ filter:brightness(1.9) saturate(.55) blur(1.6px); opacity:.9 }
@@ -757,7 +794,22 @@ html,body{ background:#05060A; }
   border:1px solid rgba(255,255,255,.1); overflow:hidden; margin-left:2px }
 .tb-hpbar b{ display:block; height:100%; width:100%; border-radius:99px;
   background:linear-gradient(90deg,#9C2438,#E14A5E); transition:width .45s cubic-bezier(.22,.61,.36,1) }
-.tb-potions{ display:flex; gap:6px; padding:0 12px; align-items:center }
+/* 물약(아이템) 칸: 예전엔 상단바 안에 끼워 넣어 작고 눈에 안 띄었다 — 상단바
+   흐름에서 완전히 빼내 화면 왼쪽에 독립된 패널로 띄운다. 오버레이(z-index:300)
+   가 뜨면 그 뒤로 자연히 가려진다. */
+.tb-potions{
+  position:fixed; left:16px; top:62px; z-index:150;
+  display:flex; gap:10px; align-items:center;
+  padding:11px 14px 11px 13px; border-radius:15px;
+  background:rgba(9,11,17,.88); border:1px solid rgba(217,180,99,.28);
+  box-shadow:0 16px 36px rgba(0,0,0,.5);
+}
+.tb-potions:empty{ display:none; }
+.tb-potions::before{
+  content:'물약'; position:absolute; left:14px; top:-9px;
+  font-size:10.5px; font-weight:700; letter-spacing:.14em; color:#D9B463;
+  background:#0B0D14; padding:1px 7px; border-radius:5px; border:1px solid rgba(217,180,99,.28);
+}
 .tb-sp{ flex:1 }
 /* QA 계측 스트립(경과/구간/시드/세션/기록중)은 플레이어 화면에서는 숨김 — 기록 자체는 계속 동작 */
 .qa-cluster{ display:none; }
@@ -768,11 +820,21 @@ html,body{ background:#05060A; }
 .tb-btn svg{ width:16px; height:16px }
 .tb-btn b{ font-size:13px; font-variant-numeric:tabular-nums }
 #tb-export.copied{ color:var(--moss,#6FA678); border-color:rgba(111,166,120,.55); background:rgba(111,166,120,.1) }
+/* 합성 가능한 짝이 덱에 있으면 "덱" 버튼 자체에 금색 표시를 띄운다 — 덱 화면을
+   열어봐야만 알 수 있던 걸 상단바에서 바로 알 수 있게. */
+#tb-deck{ position:relative }
+#tb-deck.has-fuse{ color:#F2CE7C; border-color:rgba(217,180,99,.55); background:rgba(217,180,99,.1) }
+#tb-deck.has-fuse::after{
+  content:''; position:absolute; top:-4px; right:-4px; width:10px; height:10px; border-radius:50%;
+  background:#D9B463; box-shadow:0 0 8px rgba(217,180,99,.9), 0 0 0 2px #0B0D14;
+  animation:fuseBadgePulse 1.6s ease-in-out infinite;
+}
+@keyframes fuseBadgePulse{ 0%,100%{ transform:scale(1); opacity:1 } 50%{ transform:scale(1.35); opacity:.7 } }
+.perf-lite #tb-deck.has-fuse::after{ animation:none !important; }
 #snd{ margin-left:10px }
-/* 상단바 포션 */
-.tb-potions .potion{ width:28px; height:34px; border-radius:6px }
-.tb-potions .potion svg{ width:17px; height:23px }
-.tb-potions .potion.empty::after{ width:7px }
+/* 물약 패널: 원래 크기(42×52) 그대로 — 눈에 잘 띄게 줄이지 않는다 */
+.tb-potions .potion{ width:42px; height:52px }
+.tb-potions .potion svg{ width:26px; height:34px }
 
 /* 키워드 툴팁 */
 #tip h5{ color:#F2CE7C }
@@ -969,6 +1031,8 @@ body.has-floor #floor{opacity:1}
 .perf-lite .mote{ display:none }
 .perf-lite #glow, .perf-lite #fogA, .perf-lite #fogB, .perf-lite #rays{ display:none }
 .perf-lite .photo-wrap{ animation:none !important }
+.perf-lite #bgphoto .bg-fill{ filter:brightness(.5) saturate(1.1) }
+.perf-lite #bgphoto .bg-main{ filter:none }
 .perf-lite .enemy-photo, .perf-lite .prop-photo{ filter:none !important }
 .perf-lite .deck-view .card.fusable .card-inner::after{ animation:none !important; opacity:.6 }
 .perf-lite .map-node.avail .node-disc::after{ animation:none !important; opacity:.6 }
@@ -1458,23 +1522,42 @@ body.has-floor #floor{opacity:1}
 /* 보상/덱 보기에서는 살짝 축소 */
 .deck-view .card{ transform:scale(.8); margin:-22px -16px }
 
+/* 전투 중 손패 합성 — 덱 보기의 fusable/fsel 표시와 같은 시각 언어를 손패에도 그대로 쓴다.
+   합성 모드가 아닐 때는 .fusable/.fsel이 DOM에 있어도 #hand.fuse-mode가 없으면 조용하다. */
+#hand-fuse-toggle.on{ color:#F2CE7C; border-color:rgba(217,180,99,.6); background:rgba(217,180,99,.14) }
+#hand.fuse-mode .card:not(.fusable){ filter:grayscale(.7) brightness(.55); }
+#hand.fuse-mode .card.fusable{ cursor:pointer; }
+#hand.fuse-mode .card.fusable .card-inner::after{
+  content:''; position:absolute; inset:-6px; border-radius:19px; z-index:10; pointer-events:none;
+  box-shadow:0 0 0 2.5px var(--gold), 0 0 20px rgba(217,180,99,.75), 0 0 52px rgba(217,180,99,.5);
+  opacity:.5; animation:fusableGlow 2.2s ease-in-out infinite; will-change:opacity;
+}
+/* 선택 표시는 발광만 준다 — 덱 보기처럼 translateY로 들어올리면 손패의 부채꼴
+   배치(--tx/--ty/--rot)를 통째로 덮어써 카드가 실제 클릭 판정 위치에서 벗어나고,
+   그 카드를 다시 눌러도(선택 해제) 빈 자리를 누르는 꼴이 되어 씹힌다 — 실측으로 확인된 문제. */
+#hand.fuse-mode .card.fsel{ z-index:80; }
+#hand.fuse-mode .card.fsel .card-inner::after{
+  animation:none; opacity:1; box-shadow:0 0 0 3px var(--gold), 0 0 44px rgba(217,180,99,.85);
+}
+.hand-zone.fuse-shake{ animation:shake .34s; }
+
 /* ── 턴 국면 표시 ── */
 #phase{
-  position:absolute; left:50%; top:8px; transform:translateX(-50%); z-index:120;
-  display:flex; align-items:center; gap:10px; padding:6px 16px 6px 12px; border-radius:99px;
-  background:rgba(8,10,16,.78); border:1px solid rgba(255,255,255,.09);
-  box-shadow:0 6px 22px rgba(0,0,0,.5);
-  font-size:12.5px; letter-spacing:.08em; color:#AEB4C8; pointer-events:none;
+  position:absolute; left:50%; top:14px; transform:translateX(-50%); z-index:120;
+  display:flex; align-items:center; gap:14px; padding:11px 28px 11px 20px; border-radius:99px;
+  background:rgba(8,10,16,.88); border:1.5px solid rgba(255,255,255,.14);
+  box-shadow:0 10px 30px rgba(0,0,0,.55);
+  font-size:18px; font-weight:700; letter-spacing:.1em; color:#AEB4C8; pointer-events:none;
   transition:border-color .35s, box-shadow .35s, color .35s;
 }
-#phase .pd{ width:7px; height:7px; border-radius:50%; background:#6FA678;
-  box-shadow:0 0 10px #6FA678; transition:background .35s, box-shadow .35s }
-#phase .pn{ font-weight:600; color:#E9E3D6 }
-#phase .pt{ padding-left:10px; margin-left:2px; border-left:1px solid rgba(255,255,255,.12);
-  font-size:11.5px; color:#71778E; font-variant-numeric:tabular-nums }
-.arena.foe #phase{ border-color:rgba(196,56,75,.5); color:#E7A8B4;
-  box-shadow:0 6px 26px rgba(0,0,0,.5), 0 0 22px rgba(196,56,75,.28) }
-.arena.foe #phase .pd{ background:#E14A5E; box-shadow:0 0 12px #E14A5E }
+#phase .pd{ width:11px; height:11px; border-radius:50%; background:#6FA678;
+  box-shadow:0 0 16px #6FA678; transition:background .35s, box-shadow .35s }
+#phase .pn{ font-weight:800; color:#E9E3D6; font-size:19px; }
+#phase .pt{ padding-left:16px; margin-left:4px; border-left:1px solid rgba(255,255,255,.16);
+  font-size:14px; font-weight:500; color:#8A90A8; font-variant-numeric:tabular-nums }
+.arena.foe #phase{ border-color:rgba(196,56,75,.55); color:#E7A8B4;
+  box-shadow:0 10px 34px rgba(0,0,0,.55), 0 0 28px rgba(196,56,75,.32) }
+.arena.foe #phase .pd{ background:#E14A5E; box-shadow:0 0 16px #E14A5E }
 .arena.foe #phase .pn{ color:#FFD6DD }
 
 /* 적 턴 동안의 화면 상태 */
@@ -1579,9 +1662,9 @@ body.has-floor #floor{opacity:1}
   .tb-stat{ padding:0 8px; font-size:12.5px; gap:5px }
   .tb-stat svg{ width:15px; height:15px }
   .tb-hpbar{ display:none }
-  .tb-potions{ padding:0 6px; gap:4px }
-  .tb-potions .potion{ width:22px; height:27px }
-  .tb-potions .potion svg{ width:13px; height:18px }
+  .tb-potions{ left:10px; top:52px; padding:8px 10px; gap:7px }
+  .tb-potions .potion{ width:34px; height:42px }
+  .tb-potions .potion svg{ width:20px; height:27px }
   .qa-cluster .qa-item{ padding:0 6px }
   .qa-cluster .qa-item:nth-child(n+2){ display:none }
   .tb-stat.floor{ padding:0 6px }
@@ -1609,7 +1692,9 @@ body.has-floor #floor{opacity:1}
   .corner{ width:8px; height:8px }
   .card-frame::after{ display:none }
   .hand-zone{ height:176px }
-  #phase{ top:4px; padding:5px 12px 5px 9px; font-size:11px }
+  #phase{ top:6px; padding:8px 18px 8px 14px; font-size:14px; gap:9px }
+  #phase .pn{ font-size:15px }
+  #phase .pd{ width:9px; height:9px }
   #phase .pt{ display:none }
   .phase-sweep span{ font-size:21px; letter-spacing:.24em }
   .energy{ width:60px; height:60px }

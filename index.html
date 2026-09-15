@@ -64,7 +64,7 @@
       <div class="qa-item"><span class="qa-k">세션</span><span class="qa-v" id="qa-sid">—</span></div>
       <div class="qa-brand"><span class="qa-dot"></span><span>기록 중</span></div>
     </div>
-    <button id="tb-deck" class="tb-btn" data-tip2="덱|지금 지니고 있는 모든 각인. 같은 각인 2장을 모으면 클릭해서 합성할 수 있다.">
+    <button id="tb-deck" class="tb-btn" data-tip2="덱|지금 지니고 있는 모든 각인. 같은 각인 2장을 모으면 두 번 클릭하거나 하나를 끌어다 짝 위에 놓아 합성할 수 있다.">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">
         <rect x="4" y="3" width="12" height="17" rx="2"/><path d="M8 2.5 19.2 4.6a2 2 0 0 1 1.6 2.3L19 19"/></svg>
       <b id="tb-decknum">10</b></button>
@@ -175,6 +175,7 @@
         </div>
         <div class="pile" id="pile-discard"><b id="discard-n">0</b><span>버린 패</span></div>
         <div class="spacer"></div>
+        <button class="btn" id="hand-fuse-toggle" data-tip2="합성|같은 각인 두 장을 손패에서 직접 골라 그 자리에서 합성한다. 다시 누르면 취소.">각인 합성</button>
         <button class="btn btn-primary" id="end-turn">턴 종료</button>
       </div>
     </section>
